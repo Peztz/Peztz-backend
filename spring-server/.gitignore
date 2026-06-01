@@ -35,3 +35,10 @@ out/
 
 ### VS Code ###
 .vscode/
+
+__pycache__/
+*.pyc
+*.jpg
+*.jpeg
+*.png
+*.h264
