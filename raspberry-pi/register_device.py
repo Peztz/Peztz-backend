@@ -3,7 +3,8 @@ import uuid
 import requests
 
 # 서버 주소
-SERVER_URL = "http://34.50.7.78:8000/register"
+SERVER_URL = http://192.168.150.113:8080/api/raspberrypis/register"
+#"http://34.50.7.78:8000/register"
 
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -19,8 +20,8 @@ def get_mac():
 
 def send_info():
     data = {
-        "ip": get_ip(),
-        "mac": get_mac()
+        "macAddress": get_mac().upper(),
+        "lastIp": get_ip()
     }
     print(f"전송 데이터: {data}")
     
