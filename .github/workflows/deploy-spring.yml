@@ -30,13 +30,15 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Build Spring Boot jar
-        run: ./gradlew clean bootJar
+        run: ./gradlew clean bootJar -x test
 
       - name: Prepare SSH key
         run: |
           mkdir -p ~/.ssh
-          printf "%s" "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/gcp_key
+          printf "%s\n" "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/gcp_key
+          sed -i 's/\r$//' ~/.ssh/gcp_key
           chmod 600 ~/.ssh/gcp_key
+          ssh-keygen -y -f ~/.ssh/gcp_key > /dev/null
           ssh-keyscan -H ${{ secrets.GCP_HOST }} >> ~/.ssh/known_hosts
 
       - name: Find boot jar
