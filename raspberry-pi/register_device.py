@@ -3,8 +3,8 @@ import uuid
 import requests
 
 # 서버 주소
-SERVER_URL = http://192.168.150.113:8080/api/raspberrypis/register"
-#"http://34.50.7.78:8000/register"
+SERVER_URL = "http://34.50.7.78:8080/api/raspberrypis/register"
+#http://192.168.150.113:8080/api/raspberrypis/register"
 
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
