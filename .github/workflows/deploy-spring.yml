@@ -1,0 +1,58 @@
+name: Deploy Spring Boot to GCP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "spring-server/**"
+      - ".github/workflows/deploy-spring.yml"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: spring-server
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Grant execute permission for Gradle
+        run: chmod +x ./gradlew
+
+      - name: Build Spring Boot jar
+        run: ./gradlew clean bootJar
+
+      - name: Prepare SSH key
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/gcp_key
+          chmod 600 ~/.ssh/gcp_key
+          ssh-keyscan -H ${{ secrets.GCP_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Find boot jar
+        run: |
+          JAR_FILE=$(find build/libs -name "*.jar" ! -name "*plain.jar" | head -n 1)
+          echo "JAR_FILE=$JAR_FILE" >> $GITHUB_ENV
+          echo "Found jar: $JAR_FILE"
+
+      - name: Upload jar to GCP
+        run: |
+          scp -i ~/.ssh/gcp_key \
+            "$JAR_FILE" \
+            ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}:${{ secrets.GCP_DEPLOY_PATH }}/spring-server.jar
+
+      - name: Restart Spring Boot service
+        run: |
+          ssh -i ~/.ssh/gcp_key \
+            ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} \
+            "sudo systemctl restart peztz-spring && sudo systemctl status peztz-spring --no-pager"
