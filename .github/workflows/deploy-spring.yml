@@ -8,6 +8,8 @@ on:
       - "spring-server/**"
       - ".github/workflows/deploy-spring.yml"
 
+  workflow_dispatch:
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -57,4 +59,4 @@ jobs:
         run: |
           ssh -i ~/.ssh/gcp_key \
             ${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }} \
-            "sudo systemctl restart peztz-spring && sudo systemctl status peztz-spring --no-pager"
+            "sudo -n systemctl restart peztz-spring && sudo -n systemctl status peztz-spring --no-pager"
