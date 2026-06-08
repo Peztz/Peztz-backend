@@ -10,4 +10,8 @@ import com.peztz.backend.cage.entity.Cage;
 public interface CageRepository extends JpaRepository<Cage, UUID> {
 
 	List<Cage> findAllByOrderByIdAsc();
+
+	List<Cage> findAllByFacilityIdOrderByIdAsc(UUID facilityId);
+
+	boolean existsByIdAndFacilityId(UUID id, UUID facilityId);
 }

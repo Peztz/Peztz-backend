@@ -13,6 +13,7 @@ import com.peztz.backend.cage.dto.CageRequest;
 import com.peztz.backend.cage.dto.CageResponse;
 import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.cage.repository.CageRepository;
+import com.peztz.backend.facility.entity.Facility;
 import com.peztz.backend.facility.service.FacilityService;
 
 import lombok.RequiredArgsConstructor;
@@ -42,8 +43,11 @@ public class CageService {
 
 	@Transactional
 	public CageResponse create(UUID facilityId, CageRequest request) {
-		facilityService.getFacility(facilityId);
+		Facility facility = facilityService.getFacility(facilityId);
 		Cage cage = Cage.builder()
+				.facility(facility)
+				.name(request.name())
+				.cageNumber(request.cageNumber())
 				.status(normalizeStatus(request.status()))
 				.raspberryPiDeviceId(request.raspberryPiDeviceId())
 				.build();
@@ -53,7 +57,7 @@ public class CageService {
 	@Transactional(readOnly = true)
 	public List<CageResponse> findByFacility(UUID facilityId) {
 		facilityService.getFacility(facilityId);
-		return cageRepository.findAllByOrderByIdAsc().stream()
+		return cageRepository.findAllByFacilityIdOrderByIdAsc(facilityId).stream()
 				.map(this::toResponse)
 				.toList();
 	}
@@ -61,6 +65,8 @@ public class CageService {
 	@Transactional
 	public CageResponse update(UUID cageId, CageRequest request) {
 		Cage cage = getCage(cageId);
+		cage.setName(request.name());
+		cage.setCageNumber(request.cageNumber());
 		cage.setStatus(normalizeStatus(request.status()));
 		cage.setRaspberryPiDeviceId(request.raspberryPiDeviceId());
 		return toResponse(cage);
@@ -80,13 +86,17 @@ public class CageService {
 	public CageResponse toResponse(Cage cage) {
 		return new CageResponse(
 				cage.getId(),
-				cage.getUser() == null ? null : cage.getUser().getHospitalId(),
-				"케이지 " + cage.getId(),
-				null,
+				cage.getFacility() == null ? null : cage.getFacility().getId(),
+				getCageName(cage),
+				cage.getCageNumber(),
 				cage.getStatus(),
 				cage.getRaspberryPiDeviceId(),
 				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()),
-				null);
+				cage.getCreatedAt());
+	}
+
+	private String getCageName(Cage cage) {
+		return cage.getName() == null ? "Cage " + cage.getId() : cage.getName();
 	}
 
 	private String normalizeStatus(String status) {

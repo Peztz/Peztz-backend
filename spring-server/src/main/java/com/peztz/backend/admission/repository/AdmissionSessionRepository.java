@@ -19,4 +19,8 @@ public interface AdmissionSessionRepository extends JpaRepository<AdmissionSessi
 	Optional<AdmissionSession> findByAccessCode(String accessCode);
 
 	boolean existsByAccessCodeAndStatus(String accessCode, String status);
+
+	boolean existsByPetIdAndStatus(UUID petId, String status);
+
+	boolean existsByCageIdAndStatus(UUID cageId, String status);
 }

@@ -50,25 +50,12 @@ public class AdmissionSessionService {
 		Cage cage = cageRepository.findById(request.cageId())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
 
-		if (!CageService.STATUS_AVAILABLE.equals(cage.getStatus())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cage is not available");
-		}
+		return toResponse(createActiveSession(owner, pet, cage));
+	}
 
-		cage.setStatus(CageService.STATUS_OCCUPIED);
-		String accessCode = generateAccessCode();
-		cage.setUser(owner);
-		cage.setCurrentPet(pet);
-		cage.setAccessCode(accessCode);
-		AdmissionSession session = AdmissionSession.builder()
-				.owner(owner)
-				.pet(pet)
-				.cage(cage)
-				.accessCode(accessCode)
-				.status(STATUS_ACTIVE)
-				.createdAt(OffsetDateTime.now().withNano(0))
-				.build();
-
-		return toResponse(admissionSessionRepository.save(session));
+	@Transactional
+	public AdmissionSession createForFacility(AppUser owner, Pet pet, Cage cage) {
+		return createActiveSession(owner, pet, cage);
 	}
 
 	@Transactional(readOnly = true)
@@ -95,6 +82,7 @@ public class AdmissionSessionService {
 
 		session.setStatus(STATUS_ENDED);
 		session.getCage().setStatus(CageService.STATUS_AVAILABLE);
+		session.getCage().setUser(null);
 		session.getCage().setCurrentPet(null);
 		session.getCage().setAccessCode(null);
 		return toResponse(session);
@@ -113,7 +101,7 @@ public class AdmissionSessionService {
 				true,
 				session.getId(),
 				session.getPet().getName(),
-				"케이지 " + session.getCage().getId(),
+				getCageName(session.getCage()),
 				videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId()));
 	}
 
@@ -126,8 +114,8 @@ public class AdmissionSessionService {
 						session.getPet().getId(),
 						session.getPet().getName(),
 						session.getCage().getId(),
-						"케이지 " + session.getCage().getId(),
-						null,
+						getCageName(session.getCage()),
+						session.getCage().getFacility() == null ? null : session.getCage().getFacility().getName(),
 						session.getCage().getStatus(),
 						videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId())))
 				.toList();
@@ -157,6 +145,34 @@ public class AdmissionSessionService {
 				videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId()));
 	}
 
+	private AdmissionSession createActiveSession(AppUser owner, Pet pet, Cage cage) {
+		if (!CageService.STATUS_AVAILABLE.equals(cage.getStatus())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cage is not available");
+		}
+		if (admissionSessionRepository.existsByPetIdAndStatus(pet.getId(), STATUS_ACTIVE)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pet already has an active admission session");
+		}
+		if (admissionSessionRepository.existsByCageIdAndStatus(cage.getId(), STATUS_ACTIVE)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cage already has an active admission session");
+		}
+
+		cage.setStatus(CageService.STATUS_OCCUPIED);
+		String accessCode = generateAccessCode();
+		cage.setUser(owner);
+		cage.setCurrentPet(pet);
+		cage.setAccessCode(accessCode);
+		AdmissionSession session = AdmissionSession.builder()
+				.owner(owner)
+				.pet(pet)
+				.cage(cage)
+				.accessCode(accessCode)
+				.status(STATUS_ACTIVE)
+				.createdAt(OffsetDateTime.now().withNano(0))
+				.build();
+
+		return admissionSessionRepository.save(session);
+	}
+
 	private AdmissionSession findOwnedSession(Long sessionId, UUID ownerId) {
 		return admissionSessionRepository.findByIdAndOwnerId(sessionId, ownerId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Admission session not found"));
@@ -170,5 +186,9 @@ public class AdmissionSessionService {
 			}
 		}
 		throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Could not generate access code");
+	}
+
+	private String getCageName(Cage cage) {
+		return cage.getName() == null ? "Cage " + cage.getId() : cage.getName();
 	}
 }

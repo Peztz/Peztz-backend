@@ -141,7 +141,7 @@ Facilities are backed by `hospitals`. `address` is returned as `null` because th
 GET /api/facilities
 ```
 
-The existing `cage` table has no direct `hospital_id`, `name`, or `cage_number`. Therefore cage responses use calculated/null fields where needed.
+The `cage` table stores `hospital_id`, `name`, `cage_number`, `status`, and the connected Raspberry Pi `device_id`. Facility cage responses should include `facilityId`, `name`, `cageNumber`, and `videoUrl` when a Raspberry Pi device is connected.
 
 ```http
 GET /api/facilities/{facilityId}/cages
@@ -150,9 +150,9 @@ GET /api/facilities/{facilityId}/cages
 ```json
 {
   "id": "d69fc7ff-481c-4305-b81c-551955a1ce23",
-  "facilityId": null,
-  "name": "cage d69fc7ff-481c-4305-b81c-551955a1ce23",
-  "cageNumber": null,
+  "facilityId": "0e96bc6a-90a5-45cc-ac64-37d19254e7a2",
+  "name": "A-1 Cage",
+  "cageNumber": "A-1",
   "status": "AVAILABLE",
   "raspberryPiDeviceId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
   "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890",
@@ -170,6 +170,15 @@ GET /api/cages/{cageId}
 PUT /api/cages/{cageId}
 DELETE /api/cages/{cageId}
 ```
+
+Facility admission APIs:
+
+```text
+GET /api/facilities/{facilityId}/owners/pets?email={ownerEmail}
+POST /api/facilities/{facilityId}/admission-sessions
+```
+
+These APIs require `Authorization: Bearer {accessToken}` for a facility role such as `FACILITY_MANAGER` or `ADMIN`. Facility admission creates the same active session/access code used by `POST /api/admission-sessions/access-code/verify`.
 
 ## Admission Session Flow
 

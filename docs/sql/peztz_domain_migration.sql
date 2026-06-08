@@ -39,3 +39,19 @@ select setval(
     coalesce((select max(log_id) from public.pet_logs), 0) + 1,
     false
 );
+
+alter table public.cage
+    add column if not exists hospital_id uuid references public.hospitals(hospital_id),
+    add column if not exists name varchar(100),
+    add column if not exists cage_number varchar(50),
+    add column if not exists created_at timestamp;
+
+update public.cage
+set created_at = now()
+where created_at is null;
+
+alter table public.cage
+    alter column created_at set default now(),
+    alter column created_at set not null;
+
+create index if not exists idx_cage_hospital_id on public.cage(hospital_id);
