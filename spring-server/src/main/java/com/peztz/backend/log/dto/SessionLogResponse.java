@@ -5,7 +5,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Session log response", example = """
 		{
-		  "id": "d0652acd-4632-4d32-a8db-093fbf86266c",
+		  "id": 90008,
 		  "type": "SENSOR",
 		  "message": "온습도 센서 데이터 수신",
 		  "temperature": 25.4,
@@ -14,7 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record SessionLogResponse(
-		@Schema(description = "Log ID", example = "d0652acd-4632-4d32-a8db-093fbf86266c")
+		@Schema(description = "Log ID", example = "90008")
 		Long id,
 
 		@Schema(description = "Log type", example = "SENSOR")

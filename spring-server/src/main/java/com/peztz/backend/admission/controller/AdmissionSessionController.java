@@ -62,7 +62,7 @@ public class AdmissionSessionController {
 	public ResponseEntity<AdmissionSessionResponse> findById(
 			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "3457d769-298f-43d5-a06c-3bbb97bb30d5")
+			@Parameter(description = "Session ID", example = "1000000002")
 			@PathVariable Long sessionId) {
 		return ResponseEntity.ok(admissionSessionService.findById(authorization, sessionId));
 	}
@@ -90,7 +90,7 @@ public class AdmissionSessionController {
 	public ResponseEntity<AdmissionSessionResponse> end(
 			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "3457d769-298f-43d5-a06c-3bbb97bb30d5")
+			@Parameter(description = "Session ID", example = "1000000002")
 			@PathVariable Long sessionId) {
 		return ResponseEntity.ok(admissionSessionService.end(authorization, sessionId));
 	}

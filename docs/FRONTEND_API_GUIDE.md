@@ -273,6 +273,14 @@ GET /api/raspberrypis/{deviceId}/stream-url
 GET /api/raspberrypis/stream-url?macAddress=...
 ```
 
+Frontend video playback should use the FastAPI proxy URL:
+
+```text
+http://34.50.7.78:8000/video/{deviceId}
+```
+
+`GET /api/raspberrypis/{deviceId}/stream-url` is for checking the internal upstream URL that FastAPI uses. The `raspberrypi.lastIp` value must be the Raspberry Pi Tailscale IP, normally `100.x.x.x`, so the GCP FastAPI server can reach `http://{lastIp}:8001/video_feed`. If the Raspberry Pi is powered off or `camera_stream.py` is not running, `GET /video/{deviceId}` can return `502` or timeout.
+
 ## Session Log Flow
 
 Logs are stored in `pet_logs`. `type` maps to `log_type`; `message`, `temperature`, and `humidity` are stored inside `data jsonb`.

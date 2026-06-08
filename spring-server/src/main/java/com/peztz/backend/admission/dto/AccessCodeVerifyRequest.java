@@ -9,7 +9,7 @@ import jakarta.validation.constraints.NotBlank;
 		}
 		""")
 public record AccessCodeVerifyRequest(
-		@Schema(description = "Six digit access code", example = "123456")
+		@Schema(description = "Six digit access code", example = "\"123456\"")
 		@NotBlank
 		String accessCode) {
 }

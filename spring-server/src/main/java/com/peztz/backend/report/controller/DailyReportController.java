@@ -57,7 +57,7 @@ public class DailyReportController {
 	public ResponseEntity<DailyReportResponse> getSessionDailyReport(
 			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "3457d769-298f-43d5-a06c-3bbb97bb30d5")
+			@Parameter(description = "Session ID", example = "1000000002")
 			@PathVariable Long sessionId,
 			@Parameter(description = "Report date", example = "2026-06-08", required = true)
 			@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {

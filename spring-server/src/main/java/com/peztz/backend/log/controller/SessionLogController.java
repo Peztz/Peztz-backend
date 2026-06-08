@@ -43,7 +43,7 @@ public class SessionLogController {
 	public ResponseEntity<List<SessionLogResponse>> findBySession(
 			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "3457d769-298f-43d5-a06c-3bbb97bb30d5")
+			@Parameter(description = "Session ID", example = "1000000002")
 			@PathVariable Long sessionId) {
 		return ResponseEntity.ok(sessionLogService.findBySession(authorization, sessionId));
 	}
@@ -58,7 +58,7 @@ public class SessionLogController {
 	public ResponseEntity<SessionLogResponse> create(
 			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "3457d769-298f-43d5-a06c-3bbb97bb30d5")
+			@Parameter(description = "Session ID", example = "1000000002")
 			@PathVariable Long sessionId,
 			@Valid @RequestBody SessionLogRequest request) {
 		return ResponseEntity.ok(sessionLogService.create(authorization, sessionId, request));

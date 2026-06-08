@@ -1,4 +1,5 @@
 import socket
+import subprocess
 import uuid
 import requests
 
@@ -13,6 +14,30 @@ def get_ip():
     s.close()
     return ip
 
+def get_tailscale_ip():
+    try:
+        result = subprocess.run(
+            ["tailscale", "ip", "-4"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+
+    if result.returncode != 0:
+        return None
+
+    for line in result.stdout.splitlines():
+        ip = line.strip()
+        if ip.startswith("100."):
+            return ip
+    return None
+
+def get_register_ip():
+    return get_tailscale_ip() or get_ip()
+
 def get_mac():
     mac = ':'.join(['{:02x}'.format((uuid.getnode() >> i) & 0xff)
                    for i in range(0, 48, 8)][::-1])
@@ -21,7 +46,7 @@ def get_mac():
 def send_info():
     data = {
         "macAddress": get_mac().upper(),
-        "lastIp": get_ip()
+        "lastIp": get_register_ip()
     }
     print(f"전송 데이터: {data}")
     

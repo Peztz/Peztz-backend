@@ -7,7 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Admission session response", example = """
 		{
-		  "sessionId": "3457d769-298f-43d5-a06c-3bbb97bb30d5",
+		  "sessionId": 1000000002,
 		  "petId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
 		  "cageId": "d69fc7ff-481c-4305-b81c-551955a1ce23",
 		  "accessCode": "123456",
@@ -18,7 +18,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record AdmissionSessionResponse(
-		@Schema(description = "Session ID", example = "3457d769-298f-43d5-a06c-3bbb97bb30d5")
+		@Schema(description = "Session ID", example = "1000000002")
 		Long sessionId,
 
 		@Schema(description = "Pet ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
@@ -27,7 +27,7 @@ public record AdmissionSessionResponse(
 		@Schema(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 		UUID cageId,
 
-		@Schema(description = "Six digit access code", example = "123456")
+		@Schema(description = "Six digit access code", example = "\"123456\"")
 		String accessCode,
 
 		@Schema(description = "Session status", example = "ACTIVE")
