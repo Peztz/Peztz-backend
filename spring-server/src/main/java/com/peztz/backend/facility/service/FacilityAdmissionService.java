@@ -11,6 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.peztz.backend.admission.entity.AdmissionSession;
+import com.peztz.backend.admission.repository.AdmissionSessionRepository;
 import com.peztz.backend.admission.service.AdmissionSessionService;
 import com.peztz.backend.auth.entity.AppUser;
 import com.peztz.backend.auth.repository.AppUserRepository;
@@ -19,6 +20,7 @@ import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.cage.repository.CageRepository;
 import com.peztz.backend.cage.service.VideoUrlService;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
+import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionResponse;
 import com.peztz.backend.facility.dto.FacilityOwnerPetResponse;
 import com.peztz.backend.pet.entity.Pet;
@@ -36,6 +38,7 @@ public class FacilityAdmissionService {
 	private final AppUserRepository appUserRepository;
 	private final PetRepository petRepository;
 	private final CageRepository cageRepository;
+	private final AdmissionSessionRepository admissionSessionRepository;
 	private final FacilityService facilityService;
 	private final AdmissionSessionService admissionSessionService;
 	private final VideoUrlService videoUrlService;
@@ -77,6 +80,33 @@ public class FacilityAdmissionService {
 		return toResponse(session);
 	}
 
+	@Transactional(readOnly = true)
+	public List<FacilityAdmissionSessionDetailResponse> findAdmissionSessions(
+			String authorization,
+			UUID facilityId,
+			String status) {
+		requireFacilityManager(authorization, facilityId);
+		String normalizedStatus = normalizeStatusOrDefault(status);
+		List<AdmissionSession> sessions = admissionSessionRepository
+				.findByFacilityIdAndStatusOrderByCreatedAtDesc(facilityId, normalizedStatus);
+
+		return sessions.stream()
+				.map(this::toDetailResponse)
+				.toList();
+	}
+
+	@Transactional
+	public FacilityAdmissionSessionDetailResponse endAdmissionSession(
+			String authorization,
+			UUID facilityId,
+			Long sessionId) {
+		requireFacilityManager(authorization, facilityId);
+		AdmissionSession session = admissionSessionRepository.findByIdAndFacilityId(sessionId, facilityId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Admission session not found"));
+
+		return toDetailResponse(admissionSessionService.endForFacility(session));
+	}
+
 	private void requireFacilityManager(String authorization, UUID facilityId) {
 		facilityService.getFacility(facilityId);
 		AppUser user = authService.requireUser(authorization);
@@ -97,6 +127,13 @@ public class FacilityAdmissionService {
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Owner not found"));
 	}
 
+	private String normalizeStatusOrDefault(String status) {
+		if (status == null || status.isBlank()) {
+			return AdmissionSessionService.STATUS_ACTIVE;
+		}
+		return status.trim().toUpperCase(Locale.ROOT);
+	}
+
 	private FacilityAdmissionSessionResponse toResponse(AdmissionSession session) {
 		Cage cage = session.getCage();
 		return new FacilityAdmissionSessionResponse(
@@ -109,6 +146,25 @@ public class FacilityAdmissionService {
 				session.getStatus(),
 				session.getStartedAt(),
 				null,
+				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()));
+	}
+
+	private FacilityAdmissionSessionDetailResponse toDetailResponse(AdmissionSession session) {
+		Cage cage = session.getCage();
+		AppUser owner = session.getOwner();
+		return new FacilityAdmissionSessionDetailResponse(
+				session.getId(),
+				session.getPet().getId(),
+				session.getPet().getName(),
+				owner.getId(),
+				owner.getEmail(),
+				cage.getId(),
+				cage.getName() == null ? "Cage " + cage.getId() : cage.getName(),
+				cage.getCageNumber(),
+				session.getAccessCode(),
+				session.getStatus(),
+				session.getStartedAt(),
+				session.getEndedAtAsLocalDateTime(),
 				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()));
 	}
 }

@@ -58,8 +58,15 @@ public class AdmissionSession {
 	@Column(name = "created_at", nullable = false)
 	private OffsetDateTime createdAt;
 
+	@Column(name = "ended_at")
+	private OffsetDateTime endedAt;
+
 	public LocalDateTime getStartedAt() {
 		return createdAt == null ? null : createdAt.toLocalDateTime();
+	}
+
+	public LocalDateTime getEndedAtAsLocalDateTime() {
+		return endedAt == null ? null : endedAt.toLocalDateTime();
 	}
 
 	@PrePersist

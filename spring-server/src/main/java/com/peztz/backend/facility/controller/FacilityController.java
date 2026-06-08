@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
+import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionResponse;
 import com.peztz.backend.facility.dto.FacilityOwnerPetResponse;
 import com.peztz.backend.facility.dto.FacilityRequest;
@@ -111,5 +113,48 @@ public class FacilityController {
 			@PathVariable UUID facilityId,
 			@Valid @RequestBody FacilityAdmissionSessionCreateRequest request) {
 		return ResponseEntity.ok(facilityAdmissionService.createAdmissionSession(authorization, facilityId, request));
+	}
+
+	@Operation(
+			summary = "List facility admission sessions",
+			description = "Facility staff can list sessions attached to cages in this facility. If status is omitted, ACTIVE is used by default.",
+			responses = {
+					@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+							content = @Content(array = @ArraySchema(schema = @Schema(implementation = FacilityAdmissionSessionDetailResponse.class)))),
+					@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
+					@ApiResponse(responseCode = "403", description = "Facility manager role required", content = @Content),
+					@ApiResponse(responseCode = "404", description = "Facility not found", content = @Content)
+			})
+	@GetMapping("/{facilityId}/admission-sessions")
+	public ResponseEntity<List<FacilityAdmissionSessionDetailResponse>> findAdmissionSessions(
+			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@Parameter(description = "Facility ID", example = "11111111-1111-1111-1111-111111111111")
+			@PathVariable UUID facilityId,
+			@Parameter(description = "Session status. Defaults to ACTIVE when omitted.", example = "ACTIVE")
+			@RequestParam(required = false) String status) {
+		return ResponseEntity.ok(facilityAdmissionService.findAdmissionSessions(authorization, facilityId, status));
+	}
+
+	@Operation(
+			summary = "End facility admission session",
+			description = "Facility staff ends a session attached to a cage in this facility. The existing /api/admission-sessions/{sessionId}/end endpoint is owner-scoped; this endpoint is facility-cage-scoped.",
+			responses = {
+					@ApiResponse(responseCode = "200", description = "Ended",
+							content = @Content(schema = @Schema(implementation = FacilityAdmissionSessionDetailResponse.class))),
+					@ApiResponse(responseCode = "400", description = "Session is not ACTIVE", content = @Content),
+					@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
+					@ApiResponse(responseCode = "403", description = "Facility manager role required", content = @Content),
+					@ApiResponse(responseCode = "404", description = "Facility or admission session not found", content = @Content)
+			})
+	@PatchMapping("/{facilityId}/admission-sessions/{sessionId}/end")
+	public ResponseEntity<FacilityAdmissionSessionDetailResponse> endAdmissionSession(
+			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@Parameter(description = "Facility ID", example = "11111111-1111-1111-1111-111111111111")
+			@PathVariable UUID facilityId,
+			@Parameter(description = "Session ID", example = "1000000003")
+			@PathVariable Long sessionId) {
+		return ResponseEntity.ok(facilityAdmissionService.endAdmissionSession(authorization, facilityId, sessionId));
 	}
 }

@@ -23,6 +23,9 @@ create sequence if not exists public.access_session_session_id_seq;
 alter table public.access_session
     alter column session_id set default nextval('public.access_session_session_id_seq');
 
+alter table public.access_session
+    add column if not exists ended_at timestamp with time zone;
+
 select setval(
     'public.access_session_session_id_seq',
     coalesce((select max(session_id) from public.access_session), 0) + 1,

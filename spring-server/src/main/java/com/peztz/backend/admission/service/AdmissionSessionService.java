@@ -76,16 +76,12 @@ public class AdmissionSessionService {
 	public AdmissionSessionResponse end(String authorization, Long sessionId) {
 		AppUser owner = authService.requireUser(authorization);
 		AdmissionSession session = findOwnedSession(sessionId, owner.getId());
-		if (!STATUS_ACTIVE.equals(session.getStatus())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Admission session is not active");
-		}
+		return toResponse(endActiveSession(session));
+	}
 
-		session.setStatus(STATUS_ENDED);
-		session.getCage().setStatus(CageService.STATUS_AVAILABLE);
-		session.getCage().setUser(null);
-		session.getCage().setCurrentPet(null);
-		session.getCage().setAccessCode(null);
-		return toResponse(session);
+	@Transactional
+	public AdmissionSession endForFacility(AdmissionSession session) {
+		return endActiveSession(session);
 	}
 
 	@Transactional(readOnly = true)
@@ -141,7 +137,7 @@ public class AdmissionSessionService {
 				session.getAccessCode(),
 				session.getStatus(),
 				session.getStartedAt(),
-				null,
+				session.getEndedAtAsLocalDateTime(),
 				videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId()));
 	}
 
@@ -171,6 +167,20 @@ public class AdmissionSessionService {
 				.build();
 
 		return admissionSessionRepository.save(session);
+	}
+
+	private AdmissionSession endActiveSession(AdmissionSession session) {
+		if (!STATUS_ACTIVE.equals(session.getStatus())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Admission session is not active");
+		}
+
+		session.setStatus(STATUS_ENDED);
+		session.setEndedAt(OffsetDateTime.now().withNano(0));
+		session.getCage().setStatus(CageService.STATUS_AVAILABLE);
+		session.getCage().setUser(null);
+		session.getCage().setCurrentPet(null);
+		session.getCage().setAccessCode(null);
+		return session;
 	}
 
 	private AdmissionSession findOwnedSession(Long sessionId, UUID ownerId) {
