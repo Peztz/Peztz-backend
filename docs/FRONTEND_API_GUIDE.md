@@ -1,162 +1,337 @@
 # Peztz Frontend API Guide
 
-Spring Boot 백엔드 API는 Swagger UI에서 직접 확인하고 테스트할 수 있습니다.
-
-## Swagger 접속 주소
-
-| 환경 | Swagger UI | OpenAPI JSON |
-| --- | --- | --- |
-| Local | `http://localhost:8080/swagger-ui/index.html` | `http://localhost:8080/v3/api-docs` |
-| GCP | `http://34.50.7.78:8080/swagger-ui/index.html` | `http://34.50.7.78:8080/v3/api-docs` |
-
-GCP API Base URL:
+Spring Boot API Base URL:
 
 ```text
 http://34.50.7.78:8080
 ```
 
-## 프론트에서 우선 연결할 API
-
-1. `GET /api/raspberrypis`
-2. `GET /api/raspberrypis/{deviceId}/stream-url`
-3. `GET /api/raspberrypis/stream-url?macAddress=...`
-
-참고:
-
-- `POST /api/raspberrypis/register`는 주로 라즈베리파이 Python 코드가 호출하는 등록/상태 갱신 API입니다.
-- 프론트는 보통 목록 조회 후 선택한 장치의 `streamUrl`을 조회하는 흐름을 사용합니다.
-- `streamUrl`은 프론트에서 직접 조합하지 말고 백엔드 응답값을 사용하세요.
-
-## 기본 연결 흐름
+Swagger UI:
 
 ```text
-1. GET /api/raspberrypis 로 등록된 라즈베리파이 목록 조회
-2. 사용자가 특정 라즈베리파이 또는 케이지 선택
-3. 선택한 deviceId로 GET /api/raspberrypis/{deviceId}/stream-url 호출
-4. 응답의 streamUrl 값을 <img src={streamUrl}>에 넣어 영상 표시
+http://localhost:8080/swagger-ui/index.html
+http://34.50.7.78:8080/swagger-ui/index.html
 ```
 
-## 스트리밍 제한사항
-
-현재 `streamUrl` 예시:
-
-```text
-http://192.168.150.142:8001/video_feed
-```
-
-프론트 사용 예시:
-
-```html
-<img src="http://192.168.150.142:8001/video_feed" alt="Raspberry Pi stream" />
-```
-
-제한사항:
-
-- 현재 `streamUrl`은 라즈베리파이 내부 IP 기반입니다.
-- 같은 Wi-Fi 또는 같은 내부망에서는 영상 확인이 가능합니다.
-- 외부 인터넷 환경에서는 이 `streamUrl`만으로는 영상이 보이지 않을 수 있습니다.
-- 외부 영상 스트리밍은 추후 FastAPI 또는 별도 중계 서버가 필요합니다.
-- 현재 Spring Boot API는 `streamUrl`을 생성해서 내려주는 역할까지만 담당합니다.
-
-## JavaScript fetch 예시
-
-```javascript
-const API_BASE_URL = "http://34.50.7.78:8080";
-
-async function loadRaspberryPis() {
-  const response = await fetch(`${API_BASE_URL}/api/raspberrypis`);
-
-  if (!response.ok) {
-    throw new Error("라즈베리파이 목록 조회 실패");
-  }
-
-  return await response.json();
-}
-
-async function loadStreamUrlByDeviceId(deviceId) {
-  const response = await fetch(
-    `${API_BASE_URL}/api/raspberrypis/${deviceId}/stream-url`
-  );
-
-  if (!response.ok) {
-    throw new Error("streamUrl 조회 실패");
-  }
-
-  return await response.json();
-}
-
-async function loadStreamUrlByMacAddress(macAddress) {
-  const encodedMacAddress = encodeURIComponent(macAddress);
-  const response = await fetch(
-    `${API_BASE_URL}/api/raspberrypis/stream-url?macAddress=${encodedMacAddress}`
-  );
-
-  if (!response.ok) {
-    throw new Error("MAC 주소 기반 streamUrl 조회 실패");
-  }
-
-  return await response.json();
-}
-
-async function showRaspberryPiStream(deviceId, imgElement) {
-  try {
-    const data = await loadStreamUrlByDeviceId(deviceId);
-    imgElement.src = data.streamUrl;
-  } catch (error) {
-    console.error(error);
-    imgElement.removeAttribute("src");
-    alert("영상 스트림 정보를 불러오지 못했습니다.");
-  }
-}
-```
-
-## curl 테스트
-
-```bash
-curl http://34.50.7.78:8080/api/raspberrypis
-```
-
-```bash
-curl http://34.50.7.78:8080/api/raspberrypis/{deviceId}/stream-url
-```
-
-```bash
-curl "http://34.50.7.78:8080/api/raspberrypis/stream-url?macAddress=88:A2:9E:3D:02:BD"
-```
-
-## FastAPI Video Proxy
-
-Frontend clients should not use the Spring Boot `streamUrl` directly when
-displaying live video. The `streamUrl` can contain a Raspberry Pi Tailscale IP,
-which should stay behind the GCP FastAPI proxy.
-
-Use this final video URL:
+FastAPI video proxy:
 
 ```text
 http://34.50.7.78:8000/video/{deviceId}
 ```
 
-Device ID example:
+## Production DB Notes
 
-```javascript
-const deviceId = "7bf2b0d2-dd67-4002-929a-d4505f6af890";
-const videoUrl = `http://34.50.7.78:8000/video/${deviceId}`;
-document.getElementById("cameraStream").src = videoUrl;
-```
-
-```html
-<img id="cameraStream" alt="라즈베리파이 실시간 영상" />
-```
-
-MAC address proxy URL:
+The Spring domain API reuses the existing production tables:
 
 ```text
-http://34.50.7.78:8000/video/by-mac?macAddress=88%3AA2%3A9E%3A3D%3A02%3ABD
+users, "Pets", hospitals, cage, access_session, pet_logs, pet_videos, raspberrypi
 ```
 
-Spring Boot remains the source of Raspberry Pi metadata and `streamUrl` lookup,
-but the browser should render the MJPEG stream through FastAPI:
+Do not apply `docs/sql/peztz_domain_schema.sql` to production. It is deprecated and kept only as a warning file.
+
+Apply this migration before deployment:
+
+```text
+docs/sql/peztz_domain_migration.sql
+```
+
+The migration expands `users.password`, creates `auth_token`, and adds sequence/default settings for `access_session.session_id` and `pet_logs.log_id`.
+
+## Recommended Integration Order
+
+1. `POST /api/auth/signup`
+2. `POST /api/auth/login`
+3. `GET /api/auth/me`
+4. `POST /api/pets`
+5. `GET /api/pets/my`
+6. `GET /api/facilities`
+7. `GET /api/facilities/{facilityId}/cages`
+8. `POST /api/admission-sessions`
+9. `POST /api/admission-sessions/access-code/verify`
+10. `GET /api/owners/me/cages`
+11. `GET /api/admission-sessions/{sessionId}/logs`
+12. `GET /api/reports/daily?petId={petId}&date=YYYY-MM-DD`
+13. Render video with `http://34.50.7.78:8000/video/{deviceId}`
+
+## Auth Flow
+
+Create an account. `phoneNumber` is accepted for API compatibility but the current `users` table does not store it.
+
+```http
+POST /api/auth/signup
+Content-Type: application/json
+
+{
+  "email": "owner@example.com",
+  "password": "password1234",
+  "name": "Owner",
+  "phoneNumber": "010-1234-5678",
+  "role": "OWNER"
+}
+```
+
+Login and store `accessToken`:
+
+```http
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "email": "owner@example.com",
+  "password": "password1234"
+}
+```
+
+```json
+{
+  "accessToken": "sample-token",
+  "user": {
+    "id": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
+    "email": "owner@example.com",
+    "name": "Owner",
+    "role": "OWNER"
+  }
+}
+```
+
+Use protected APIs with:
+
+```http
+Authorization: Bearer sample-token
+```
+
+## Pet Flow
+
+Pets are stored in the existing `"Pets"` table. `name`, `breed`, and `memo` are persisted. `species`, `gender`, `birthDate`, and `weightKg` are accepted as nullable API fields but are not persisted unless the DB schema is extended later.
+
+```http
+POST /api/pets
+Authorization: Bearer sample-token
+Content-Type: application/json
+
+{
+  "name": "Choco",
+  "species": "DOG",
+  "breed": "Poodle",
+  "gender": "MALE",
+  "birthDate": "2022-03-01",
+  "weightKg": 5.2,
+  "memo": "Shy around strangers"
+}
+```
+
+```http
+GET /api/pets/my
+Authorization: Bearer sample-token
+```
+
+Other pet APIs:
+
+```text
+GET /api/pets/{petId}
+PUT /api/pets/{petId}
+DELETE /api/pets/{petId}
+```
+
+## Facility And Cage Flow
+
+Facilities are backed by `hospitals`. `address` is returned as `null` because the current table has no address column.
+
+```http
+GET /api/facilities
+```
+
+The existing `cage` table has no direct `hospital_id`, `name`, or `cage_number`. Therefore cage responses use calculated/null fields where needed.
+
+```http
+GET /api/facilities/{facilityId}/cages
+```
+
+```json
+{
+  "id": "d69fc7ff-481c-4305-b81c-551955a1ce23",
+  "facilityId": null,
+  "name": "cage d69fc7ff-481c-4305-b81c-551955a1ce23",
+  "cageNumber": null,
+  "status": "AVAILABLE",
+  "raspberryPiDeviceId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
+  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890",
+  "createdAt": null
+}
+```
+
+Management APIs:
+
+```text
+POST /api/facilities
+POST /api/facilities/{facilityId}/cages
+GET /api/cages
+GET /api/cages/{cageId}
+PUT /api/cages/{cageId}
+DELETE /api/cages/{cageId}
+```
+
+## Admission Session Flow
+
+Admission sessions are stored in `access_session`. `sessionId` is a numeric `bigint`, not a UUID.
+
+```http
+POST /api/admission-sessions
+Authorization: Bearer sample-token
+Content-Type: application/json
+
+{
+  "petId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
+  "cageId": "d69fc7ff-481c-4305-b81c-551955a1ce23"
+}
+```
+
+```json
+{
+  "sessionId": 123,
+  "petId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
+  "cageId": "d69fc7ff-481c-4305-b81c-551955a1ce23",
+  "accessCode": "123456",
+  "status": "ACTIVE",
+  "startedAt": "2026-06-08T12:00:00",
+  "endedAt": null,
+  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890"
+}
+```
+
+Creating a session sets cage status to `OCCUPIED`. Ending a session sets session status to `ENDED` and cage status to `AVAILABLE`.
+
+```http
+PATCH /api/admission-sessions/{sessionId}/end
+Authorization: Bearer sample-token
+```
+
+## Access Code Flow
+
+```http
+POST /api/admission-sessions/access-code/verify
+Content-Type: application/json
+
+{
+  "accessCode": "123456"
+}
+```
+
+```json
+{
+  "valid": true,
+  "sessionId": 123,
+  "petName": "Choco",
+  "cageName": "cage d69fc7ff-481c-4305-b81c-551955a1ce23",
+  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890"
+}
+```
+
+Only `ACTIVE` sessions verify successfully.
+
+## Owner Cage Flow
+
+```http
+GET /api/owners/me/cages
+Authorization: Bearer sample-token
+```
+
+```json
+[
+  {
+    "sessionId": 123,
+    "petId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
+    "petName": "Choco",
+    "cageId": "d69fc7ff-481c-4305-b81c-551955a1ce23",
+    "cageName": "cage d69fc7ff-481c-4305-b81c-551955a1ce23",
+    "facilityName": null,
+    "status": "OCCUPIED",
+    "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890"
+  }
+]
+```
+
+## Video Display Flow
+
+Prefer the `videoUrl` from cage/session responses:
 
 ```html
-<img src="http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890" />
+<img src="http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890" alt="live stream" />
 ```
+
+If only `raspberryPiDeviceId` is available:
+
+```javascript
+const videoUrl = `http://34.50.7.78:8000/video/${raspberryPiDeviceId}`;
+```
+
+Existing Raspberry Pi metadata APIs remain available:
+
+```text
+GET /api/raspberrypis
+GET /api/raspberrypis/{deviceId}/stream-url
+GET /api/raspberrypis/stream-url?macAddress=...
+```
+
+## Session Log Flow
+
+Logs are stored in `pet_logs`. `type` maps to `log_type`; `message`, `temperature`, and `humidity` are stored inside `data jsonb`.
+
+```http
+POST /api/admission-sessions/{sessionId}/logs
+Authorization: Bearer sample-token
+Content-Type: application/json
+
+{
+  "type": "SENSOR",
+  "message": "sensor data received",
+  "temperature": 25.4,
+  "humidity": 61.2
+}
+```
+
+```http
+GET /api/admission-sessions/{sessionId}/logs
+Authorization: Bearer sample-token
+```
+
+```json
+[
+  {
+    "id": 456,
+    "type": "SENSOR",
+    "message": "sensor data received",
+    "temperature": 25.4,
+    "humidity": 61.2,
+    "createdAt": "2026-06-08T12:30:00"
+  }
+]
+```
+
+## Daily Report Flow
+
+Daily reports read `temperature` and `humidity` from `pet_logs.data`.
+
+```http
+GET /api/reports/daily?petId=7bf2b0d2-dd67-4002-929a-d4505f6af890&date=2026-06-08
+Authorization: Bearer sample-token
+```
+
+```http
+GET /api/admission-sessions/{sessionId}/daily-report?date=2026-06-08
+Authorization: Bearer sample-token
+```
+
+```json
+{
+  "petId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
+  "date": "2026-06-08",
+  "totalLogCount": 12,
+  "sensorLogCount": 8,
+  "averageTemperature": 25.1,
+  "averageHumidity": 60.4,
+  "summary": "Today has 12 logs."
+}
+```
+
+If there are no logs for the date, the API returns count `0`, null averages, and a summary instead of a 500 error.

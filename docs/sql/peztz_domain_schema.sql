@@ -1,0 +1,11 @@
+-- Deprecated for production.
+--
+-- This file is intentionally not an operational schema file anymore.
+-- The production database already has these domain tables:
+-- users, "Pets", hospitals, cage, access_session, pet_logs, pet_videos, raspberrypi.
+--
+-- Do not apply the previous create-table schema for app_user, pet, facility,
+-- admission_session, or session_log to production.
+--
+-- Apply docs/sql/peztz_domain_migration.sql before deploying the Spring
+-- domain API build instead.
