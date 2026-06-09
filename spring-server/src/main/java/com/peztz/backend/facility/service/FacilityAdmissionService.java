@@ -8,6 +8,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.peztz.backend.admission.entity.AdmissionSession;
@@ -16,12 +17,15 @@ import com.peztz.backend.admission.service.AdmissionSessionService;
 import com.peztz.backend.auth.entity.AppUser;
 import com.peztz.backend.auth.repository.AppUserRepository;
 import com.peztz.backend.auth.service.AuthService;
+import com.peztz.backend.cage.dto.CageResponse;
 import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.cage.repository.CageRepository;
 import com.peztz.backend.cage.service.VideoUrlService;
+import com.peztz.backend.device.repository.RaspberryPiRepository;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionResponse;
+import com.peztz.backend.facility.dto.FacilityCageUpdateRequest;
 import com.peztz.backend.facility.dto.FacilityOwnerPetResponse;
 import com.peztz.backend.pet.entity.Pet;
 import com.peztz.backend.pet.repository.PetRepository;
@@ -33,11 +37,13 @@ import lombok.RequiredArgsConstructor;
 public class FacilityAdmissionService {
 
 	private static final Set<String> FACILITY_ROLES = Set.of("FACILITY_MANAGER", "FACILITY", "HOSPITAL", "ADMIN");
+	private static final Set<String> CAGE_UPDATE_ROLES = Set.of("FACILITY_MANAGER", "FACILITY", "HOSPITAL");
 
 	private final AuthService authService;
 	private final AppUserRepository appUserRepository;
 	private final PetRepository petRepository;
 	private final CageRepository cageRepository;
+	private final RaspberryPiRepository raspberryPiRepository;
 	private final AdmissionSessionRepository admissionSessionRepository;
 	private final FacilityService facilityService;
 	private final AdmissionSessionService admissionSessionService;
@@ -96,6 +102,31 @@ public class FacilityAdmissionService {
 	}
 
 	@Transactional
+	public CageResponse updateCage(
+			String authorization,
+			UUID facilityId,
+			UUID cageId,
+			FacilityCageUpdateRequest request) {
+		requireCageUpdateManager(authorization, facilityId);
+		Cage cage = cageRepository.findById(cageId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
+		if (cage.getFacility() == null || !facilityId.equals(cage.getFacility().getId())) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cage does not belong to facility");
+		}
+
+		cage.setName(request.name().trim());
+		cage.setCageNumber(StringUtils.hasText(request.cageNumber()) ? request.cageNumber().trim() : null);
+		UUID deviceId = parseDeviceIdOrNull(request.raspberryPiDeviceId());
+		if (deviceId != null) {
+			raspberryPiRepository.findById(deviceId)
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Raspberry Pi not found"));
+			cage.setRaspberryPiDeviceId(deviceId);
+		}
+
+		return toCageResponse(cage);
+	}
+
+	@Transactional
 	public FacilityAdmissionSessionDetailResponse endAdmissionSession(
 			String authorization,
 			UUID facilityId,
@@ -117,6 +148,20 @@ public class FacilityAdmissionService {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Facility manager role is required");
 		}
 		if (!"ADMIN".equals(role) && user.getHospitalId() != null && !facilityId.equals(user.getHospitalId())) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User cannot manage this facility");
+		}
+	}
+
+	private void requireCageUpdateManager(String authorization, UUID facilityId) {
+		facilityService.getFacility(facilityId);
+		AppUser user = authService.requireUser(authorization);
+		String role = user.getRole() == null ? "" : user.getRole().trim().toUpperCase(Locale.ROOT);
+
+		// TODO: Replace this role-string check with a real facility membership check when the role model is finalized.
+		if (!CAGE_UPDATE_ROLES.contains(role)) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Facility manager role is required");
+		}
+		if (user.getHospitalId() != null && !facilityId.equals(user.getHospitalId())) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User cannot manage this facility");
 		}
 	}
@@ -166,5 +211,28 @@ public class FacilityAdmissionService {
 				session.getStartedAt(),
 				session.getEndedAtAsLocalDateTime(),
 				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()));
+	}
+
+	private CageResponse toCageResponse(Cage cage) {
+		return new CageResponse(
+				cage.getId(),
+				cage.getFacility() == null ? null : cage.getFacility().getId(),
+				cage.getName() == null ? "Cage " + cage.getId() : cage.getName(),
+				cage.getCageNumber(),
+				cage.getStatus(),
+				cage.getRaspberryPiDeviceId(),
+				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()),
+				cage.getCreatedAt());
+	}
+
+	private UUID parseDeviceIdOrNull(String rawDeviceId) {
+		if (!StringUtils.hasText(rawDeviceId)) {
+			return null;
+		}
+		try {
+			return UUID.fromString(rawDeviceId.trim());
+		} catch (IllegalArgumentException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid raspberryPiDeviceId");
+		}
 	}
 }

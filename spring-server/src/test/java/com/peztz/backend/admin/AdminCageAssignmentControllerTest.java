@@ -19,8 +19,10 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.peztz.backend.admission.entity.AdmissionSession;
 import com.peztz.backend.admission.repository.AdmissionSessionRepository;
@@ -213,6 +215,156 @@ class AdminCageAssignmentControllerTest {
 						.header("Authorization", "Bearer " + ADMIN_TOKEN)
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(objectMapper.writeValueAsString(Map.of("phoneNumber", "051-999-9999"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void facilityManagerCanUpdateCageAndExistingFacilityOwnerFlowsStillWork() throws Exception {
+		Facility facility = saveFacility("Facility Hospital");
+		AppUser manager = saveUser("manager@example.com", "Manager", "FACILITY_MANAGER", facility.getId());
+		AppUser owner = saveUser("owner@example.com", "Owner", "OWNER", null);
+		saveToken("manager-token", manager);
+		saveToken(OWNER_TOKEN, owner);
+		RaspberryPi oldDevice = raspberryPiRepository.save(RaspberryPi.builder()
+				.deviceId(UUID.randomUUID())
+				.macAddress("00:00:00:00:00:01")
+				.lastIp("192.168.0.11")
+				.isActive("active")
+				.build());
+		RaspberryPi newDevice = raspberryPiRepository.save(RaspberryPi.builder()
+				.deviceId(UUID.randomUUID())
+				.macAddress("00:00:00:00:00:02")
+				.lastIp("192.168.0.12")
+				.isActive("active")
+				.build());
+		Cage cage = cageRepository.save(Cage.builder()
+				.id(UUID.randomUUID())
+				.facility(facility)
+				.name("Before Cage")
+				.cageNumber("A-1")
+				.status(CageService.STATUS_AVAILABLE)
+				.raspberryPiDeviceId(oldDevice.getDeviceId())
+				.createdAt(LocalDateTime.now())
+				.build());
+
+		mockMvc.perform(patch("/api/facilities/{facilityId}/cages/{cageId}", facility.getId(), cage.getId())
+						.header("Authorization", "Bearer manager-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"name", "Updated Cage",
+								"cageNumber", "B-2",
+								"raspberryPiDeviceId", newDevice.getDeviceId().toString()))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(cage.getId().toString()))
+				.andExpect(jsonPath("$.facilityId").value(facility.getId().toString()))
+				.andExpect(jsonPath("$.name").value("Updated Cage"))
+				.andExpect(jsonPath("$.cageNumber").value("B-2"))
+				.andExpect(jsonPath("$.status").value(CageService.STATUS_AVAILABLE))
+				.andExpect(jsonPath("$.raspberryPiDeviceId").value(newDevice.getDeviceId().toString()))
+				.andExpect(jsonPath("$.videoUrl", containsString(newDevice.getDeviceId().toString())));
+
+		mockMvc.perform(get("/api/facilities/{facilityId}/cages", facility.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].name").value("Updated Cage"))
+				.andExpect(jsonPath("$[0].cageNumber").value("B-2"))
+				.andExpect(jsonPath("$[0].raspberryPiDeviceId").value(newDevice.getDeviceId().toString()));
+
+		mockMvc.perform(post("/api/facilities/{facilityId}/cages", facility.getId())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"name", "Registered Cage",
+								"cageNumber", "C-3",
+								"status", CageService.STATUS_AVAILABLE,
+								"raspberryPiDeviceId", newDevice.getDeviceId()))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.name").value("Registered Cage"));
+
+		Pet pet = petRepository.save(Pet.builder()
+				.id(UUID.randomUUID())
+				.owner(owner)
+				.name("Choco")
+				.breed("Poodle")
+				.build());
+
+		MvcResult admissionResult = mockMvc.perform(post("/api/facilities/{facilityId}/admission-sessions", facility.getId())
+						.header("Authorization", "Bearer manager-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"ownerEmail", owner.getEmail(),
+								"petId", pet.getId(),
+								"cageId", cage.getId()))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.videoUrl", containsString(newDevice.getDeviceId().toString())))
+				.andReturn();
+		JsonNode admission = objectMapper.readTree(admissionResult.getResponse().getContentAsString());
+
+		mockMvc.perform(get("/api/owners/me/cages")
+						.header("Authorization", "Bearer " + OWNER_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].cageId").value(cage.getId().toString()))
+				.andExpect(jsonPath("$[0].videoUrl", containsString(newDevice.getDeviceId().toString())));
+
+		mockMvc.perform(patch("/api/admission-sessions/{sessionId}/end", admission.get("sessionId").asLong())
+						.header("Authorization", "Bearer " + OWNER_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ENDED"));
+
+		mockMvc.perform(get("/api/facilities/{facilityId}/cages", facility.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].status").value(CageService.STATUS_AVAILABLE));
+	}
+
+	@Test
+	void facilityManagerCannotUpdateCageOutsideFacility() throws Exception {
+		Facility ownFacility = saveFacility("Own Hospital");
+		Facility otherFacility = saveFacility("Other Hospital");
+		AppUser manager = saveUser("manager@example.com", "Manager", "HOSPITAL", ownFacility.getId());
+		saveToken("manager-token", manager);
+		Cage otherCage = cageRepository.save(Cage.builder()
+				.id(UUID.randomUUID())
+				.facility(otherFacility)
+				.name("Other Cage")
+				.cageNumber("O-1")
+				.status(CageService.STATUS_AVAILABLE)
+				.createdAt(LocalDateTime.now())
+				.build());
+
+		mockMvc.perform(patch("/api/facilities/{facilityId}/cages/{cageId}", ownFacility.getId(), otherCage.getId())
+						.header("Authorization", "Bearer manager-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"name", "Blocked Cage",
+								"cageNumber", "B-1"))))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void facilityCageUpdateRejectsUnknownDeviceAndRequiresName() throws Exception {
+		Facility facility = saveFacility("Facility Hospital");
+		AppUser manager = saveUser("manager@example.com", "Manager", "FACILITY", facility.getId());
+		saveToken("manager-token", manager);
+		Cage cage = cageRepository.save(Cage.builder()
+				.id(UUID.randomUUID())
+				.facility(facility)
+				.name("Cage")
+				.cageNumber("A-1")
+				.status(CageService.STATUS_AVAILABLE)
+				.createdAt(LocalDateTime.now())
+				.build());
+
+		mockMvc.perform(patch("/api/facilities/{facilityId}/cages/{cageId}", facility.getId(), cage.getId())
+						.header("Authorization", "Bearer manager-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"name", "Updated Cage",
+								"raspberryPiDeviceId", UUID.randomUUID().toString()))))
+				.andExpect(status().isNotFound());
+
+		mockMvc.perform(patch("/api/facilities/{facilityId}/cages/{cageId}", facility.getId(), cage.getId())
+						.header("Authorization", "Bearer manager-token")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of("cageNumber", "B-2"))))
 				.andExpect(status().isBadRequest());
 	}
 

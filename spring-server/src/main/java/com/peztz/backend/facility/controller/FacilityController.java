@@ -17,9 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionResponse;
+import com.peztz.backend.facility.dto.FacilityCageUpdateRequest;
 import com.peztz.backend.facility.dto.FacilityOwnerPetResponse;
 import com.peztz.backend.facility.dto.FacilityRequest;
 import com.peztz.backend.facility.dto.FacilityResponse;
+import com.peztz.backend.cage.dto.CageResponse;
 import com.peztz.backend.facility.service.FacilityAdmissionService;
 import com.peztz.backend.facility.service.FacilityService;
 
@@ -113,6 +115,29 @@ public class FacilityController {
 			@PathVariable UUID facilityId,
 			@Valid @RequestBody FacilityAdmissionSessionCreateRequest request) {
 		return ResponseEntity.ok(facilityAdmissionService.createAdmissionSession(authorization, facilityId, request));
+	}
+
+	@Operation(
+			summary = "Update facility cage",
+			description = "Facility staff can update cage name, cage number, and connected Raspberry Pi only.",
+			responses = {
+					@ApiResponse(responseCode = "200", description = "Updated",
+							content = @Content(schema = @Schema(implementation = CageResponse.class))),
+					@ApiResponse(responseCode = "400", description = "Invalid request or device ID", content = @Content),
+					@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
+					@ApiResponse(responseCode = "403", description = "Facility manager role required or cage is outside facility", content = @Content),
+					@ApiResponse(responseCode = "404", description = "Facility, cage, or Raspberry Pi not found", content = @Content)
+			})
+	@PatchMapping("/{facilityId}/cages/{cageId}")
+	public ResponseEntity<CageResponse> updateCage(
+			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@Parameter(description = "Facility ID", example = "11111111-1111-1111-1111-111111111111")
+			@PathVariable UUID facilityId,
+			@Parameter(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+			@PathVariable UUID cageId,
+			@Valid @RequestBody FacilityCageUpdateRequest request) {
+		return ResponseEntity.ok(facilityAdmissionService.updateCage(authorization, facilityId, cageId, request));
 	}
 
 	@Operation(
