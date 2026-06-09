@@ -1,13 +1,19 @@
 package com.peztz.backend.admin.controller;
 
 import java.util.List;
+import java.util.UUID;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.peztz.backend.admin.dto.AdminCageAssignmentRequest;
+import com.peztz.backend.admin.dto.AdminCageAssignmentResponse;
 import com.peztz.backend.admin.dto.AdminCageResponse;
 import com.peztz.backend.admin.dto.AdminDeviceResponse;
 import com.peztz.backend.admin.dto.AdminFacilityResponse;
@@ -69,6 +75,23 @@ public class AdminController {
 			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(adminService.getCages(authorization));
+	}
+
+	@Operation(summary = "Update cage facility and device assignment", responses = {
+			@ApiResponse(responseCode = "200", description = "Updated",
+					content = @Content(schema = @Schema(implementation = AdminCageAssignmentResponse.class))),
+			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
+			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content),
+			@ApiResponse(responseCode = "404", description = "Cage, facility, or Raspberry Pi not found", content = @Content)
+	})
+	@PatchMapping("/cages/{cageId}/assignment")
+	public ResponseEntity<AdminCageAssignmentResponse> updateCageAssignment(
+			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@Parameter(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+			@PathVariable UUID cageId,
+			@RequestBody AdminCageAssignmentRequest request) {
+		return ResponseEntity.ok(adminService.updateCageAssignment(authorization, cageId, request));
 	}
 
 	@Operation(summary = "List devices for admin", responses = {

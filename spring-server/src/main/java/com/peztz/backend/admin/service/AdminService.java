@@ -20,6 +20,8 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import com.peztz.backend.admin.dto.AdminCageResponse;
+import com.peztz.backend.admin.dto.AdminCageAssignmentRequest;
+import com.peztz.backend.admin.dto.AdminCageAssignmentResponse;
 import com.peztz.backend.admin.dto.AdminDeviceResponse;
 import com.peztz.backend.admin.dto.AdminFacilityOperationResponse;
 import com.peztz.backend.admin.dto.AdminFacilityResponse;
@@ -120,11 +122,35 @@ public class AdminService {
 						cage.getId(),
 						getCageName(cage),
 						cage.getCageNumber(),
+						getFacilityId(cage),
 						cage.getFacility() == null ? null : cage.getFacility().getName(),
 						cage.getRaspberryPiDeviceId(),
 						cage.getStatus(),
 						getCurrentPetName(cage)))
 				.toList();
+	}
+
+	@Transactional
+	public AdminCageAssignmentResponse updateCageAssignment(
+			String authorization,
+			UUID cageId,
+			AdminCageAssignmentRequest request) {
+		requireAdmin(authorization);
+		Cage cage = cageRepository.findById(cageId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
+
+		if (request.facilityId() != null) {
+			Facility facility = facilityRepository.findById(request.facilityId())
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Facility not found"));
+			cage.setFacility(facility);
+		}
+		if (request.deviceId() != null) {
+			raspberryPiRepository.findById(request.deviceId())
+					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Raspberry Pi not found"));
+			cage.setRaspberryPiDeviceId(request.deviceId());
+		}
+
+		return toAssignmentResponse(cage);
 	}
 
 	@Transactional(readOnly = true)
@@ -261,6 +287,18 @@ public class AdminService {
 	private String getCurrentPetName(Cage cage) {
 		Pet currentPet = cage.getCurrentPet();
 		return currentPet == null ? null : currentPet.getName();
+	}
+
+	private AdminCageAssignmentResponse toAssignmentResponse(Cage cage) {
+		Facility facility = cage.getFacility();
+		return new AdminCageAssignmentResponse(
+				cage.getId(),
+				getCageName(cage),
+				cage.getCageNumber(),
+				facility == null ? null : facility.getId(),
+				facility == null ? null : facility.getName(),
+				cage.getRaspberryPiDeviceId(),
+				cage.getStatus());
 	}
 
 	private String nullToEmpty(String value) {
