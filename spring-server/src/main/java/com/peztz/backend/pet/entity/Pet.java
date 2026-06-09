@@ -1,6 +1,7 @@
 package com.peztz.backend.pet.entity;
 
 import java.util.UUID;
+import java.time.LocalDate;
 
 import com.peztz.backend.auth.entity.AppUser;
 
@@ -48,8 +49,8 @@ public class Pet {
 	@Transient
 	private String gender;
 
-	@Transient
-	private java.time.LocalDate birthDate;
+	@Column(name = "birth_date")
+	private LocalDate birthDate;
 
 	@Transient
 	private Double weightKg;
