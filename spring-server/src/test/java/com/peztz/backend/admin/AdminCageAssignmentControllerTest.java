@@ -134,6 +134,89 @@ class AdminCageAssignmentControllerTest {
 	}
 
 	@Test
+	void adminCanUpdateFacilityAndItAppearsInFacilityList() throws Exception {
+		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
+		saveToken(ADMIN_TOKEN, admin);
+		Facility facility = saveFacility("Before Hospital");
+
+		mockMvc.perform(patch("/api/admin/facilities/{facilityId}", facility.getId())
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"facilityName", "After Hospital",
+								"phoneNumber", "051-999-9999"))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.facilityId").value(facility.getId().toString()))
+				.andExpect(jsonPath("$.facilityName").value("After Hospital"))
+				.andExpect(jsonPath("$.phoneNumber").value("051-999-9999"))
+				.andExpect(jsonPath("$.type").value("-"))
+				.andExpect(jsonPath("$.cageCount").value(0))
+				.andExpect(jsonPath("$.activeSessionCount").value(0))
+				.andExpect(jsonPath("$.deviceIssueCount").value(0))
+				.andExpect(jsonPath("$.status").value("-"));
+
+		mockMvc.perform(get("/api/admin/facilities")
+						.header("Authorization", "Bearer " + ADMIN_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].facilityId").value(facility.getId().toString()))
+				.andExpect(jsonPath("$[0].facilityName").value("After Hospital"))
+				.andExpect(jsonPath("$[0].phoneNumber").value("051-999-9999"));
+	}
+
+	@Test
+	void facilityUpdateRejectsDuplicateNameButAllowsOwnName() throws Exception {
+		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
+		saveToken(ADMIN_TOKEN, admin);
+		Facility first = saveFacility("First Hospital");
+		Facility second = saveFacility("Second Hospital");
+
+		mockMvc.perform(patch("/api/admin/facilities/{facilityId}", first.getId())
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"facilityName", "First Hospital",
+								"phoneNumber", ""))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.facilityName").value("First Hospital"))
+				.andExpect(jsonPath("$.phoneNumber").value("-"));
+
+		mockMvc.perform(patch("/api/admin/facilities/{facilityId}", second.getId())
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"facilityName", "First Hospital",
+								"phoneNumber", "051-999-9999"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void facilityUpdateReturnsNotFoundForUnknownFacility() throws Exception {
+		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
+		saveToken(ADMIN_TOKEN, admin);
+
+		mockMvc.perform(patch("/api/admin/facilities/{facilityId}", UUID.randomUUID())
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"facilityName", "Missing Hospital",
+								"phoneNumber", "051-999-9999"))))
+				.andExpect(status().isNotFound());
+	}
+
+	@Test
+	void facilityNameIsRequiredForAdminFacilityUpdate() throws Exception {
+		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
+		saveToken(ADMIN_TOKEN, admin);
+		Facility facility = saveFacility("Hospital");
+
+		mockMvc.perform(patch("/api/admin/facilities/{facilityId}", facility.getId())
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of("phoneNumber", "051-999-9999"))))
+				.andExpect(status().isBadRequest());
+	}
+
+	@Test
 	void adminCanUpdateCageAssignmentAndExistingCageViewsStillWork() throws Exception {
 		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
 		AppUser owner = saveUser("owner@example.com", "Owner", "OWNER", null);

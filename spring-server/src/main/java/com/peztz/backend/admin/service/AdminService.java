@@ -26,6 +26,7 @@ import com.peztz.backend.admin.dto.AdminDeviceResponse;
 import com.peztz.backend.admin.dto.AdminFacilityCreateRequest;
 import com.peztz.backend.admin.dto.AdminFacilityOperationResponse;
 import com.peztz.backend.admin.dto.AdminFacilityResponse;
+import com.peztz.backend.admin.dto.AdminFacilityUpdateRequest;
 import com.peztz.backend.admin.dto.AdminRecentEventResponse;
 import com.peztz.backend.admin.dto.AdminSummaryResponse;
 import com.peztz.backend.admin.dto.AdminUserResponse;
@@ -131,6 +132,25 @@ public class AdminService {
 				.build();
 
 		return toFacilityResponse(facilityRepository.save(facility), 0L, 0L, 0L);
+	}
+
+	@Transactional
+	public AdminFacilityResponse updateFacility(
+			String authorization,
+			UUID facilityId,
+			AdminFacilityUpdateRequest request) {
+		requireAdmin(authorization);
+		Facility facility = facilityRepository.findById(facilityId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Facility not found"));
+		String facilityName = request.facilityName().trim();
+		if (facilityRepository.existsByNameAndIdNot(facilityName, facilityId)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Facility name already exists");
+		}
+
+		facility.setName(facilityName);
+		facility.setPhoneNumber(normalizePhoneNumber(request.phoneNumber()));
+
+		return toFacilityResponse(facility);
 	}
 
 	@Transactional(readOnly = true)
@@ -324,6 +344,21 @@ public class AdminService {
 				activeSessionCount,
 				deviceIssueCount,
 				UNKNOWN_COLUMN_VALUE);
+	}
+
+	private AdminFacilityResponse toFacilityResponse(Facility facility) {
+		List<Cage> cages = cageRepository.findAll();
+		Map<UUID, Long> cageCountByFacilityId = countCagesByFacilityId(cages);
+		Map<UUID, Long> activeSessionCountByFacilityId =
+				countActiveSessionsByFacilityId(admissionSessionRepository.findAll());
+		Map<UUID, Long> deviceIssueCountByFacilityId =
+				countDeviceIssuesByFacilityId(cages, raspberryPiRepository.findAll());
+
+		return toFacilityResponse(
+				facility,
+				cageCountByFacilityId.getOrDefault(facility.getId(), 0L),
+				activeSessionCountByFacilityId.getOrDefault(facility.getId(), 0L),
+				deviceIssueCountByFacilityId.getOrDefault(facility.getId(), 0L));
 	}
 
 	private AdminCageAssignmentResponse toAssignmentResponse(Cage cage) {

@@ -9,4 +9,6 @@ import com.peztz.backend.facility.entity.Facility;
 public interface FacilityRepository extends JpaRepository<Facility, UUID> {
 
 	boolean existsByName(String name);
+
+	boolean existsByNameAndIdNot(String name, UUID id);
 }

@@ -19,6 +19,7 @@ import com.peztz.backend.admin.dto.AdminCageResponse;
 import com.peztz.backend.admin.dto.AdminDeviceResponse;
 import com.peztz.backend.admin.dto.AdminFacilityCreateRequest;
 import com.peztz.backend.admin.dto.AdminFacilityResponse;
+import com.peztz.backend.admin.dto.AdminFacilityUpdateRequest;
 import com.peztz.backend.admin.dto.AdminSummaryResponse;
 import com.peztz.backend.admin.dto.AdminUserResponse;
 import com.peztz.backend.admin.service.AdminService;
@@ -80,6 +81,24 @@ public class AdminController {
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@Valid @RequestBody AdminFacilityCreateRequest request) {
 		return ResponseEntity.ok(adminService.createFacility(authorization, request));
+	}
+
+	@Operation(summary = "Update facility for admin", responses = {
+			@ApiResponse(responseCode = "200", description = "Updated",
+					content = @Content(schema = @Schema(implementation = AdminFacilityResponse.class))),
+			@ApiResponse(responseCode = "400", description = "Invalid request or duplicate facility name", content = @Content),
+			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
+			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content),
+			@ApiResponse(responseCode = "404", description = "Facility not found", content = @Content)
+	})
+	@PatchMapping("/facilities/{facilityId}")
+	public ResponseEntity<AdminFacilityResponse> updateFacility(
+			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@Parameter(description = "Facility ID", example = "11111111-1111-1111-1111-111111111111")
+			@PathVariable UUID facilityId,
+			@Valid @RequestBody AdminFacilityUpdateRequest request) {
+		return ResponseEntity.ok(adminService.updateFacility(authorization, facilityId, request));
 	}
 
 	@Operation(summary = "List cages for admin", responses = {
