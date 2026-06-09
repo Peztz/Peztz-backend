@@ -11,5 +11,7 @@ public record AdminFacilityResponse(
 		String phoneNumber,
 		String type,
 		long cageCount,
+		long activeSessionCount,
+		long deviceIssueCount,
 		String status) {
 }

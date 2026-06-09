@@ -23,6 +23,7 @@ import com.peztz.backend.admin.dto.AdminCageResponse;
 import com.peztz.backend.admin.dto.AdminCageAssignmentRequest;
 import com.peztz.backend.admin.dto.AdminCageAssignmentResponse;
 import com.peztz.backend.admin.dto.AdminDeviceResponse;
+import com.peztz.backend.admin.dto.AdminFacilityCreateRequest;
 import com.peztz.backend.admin.dto.AdminFacilityOperationResponse;
 import com.peztz.backend.admin.dto.AdminFacilityResponse;
 import com.peztz.backend.admin.dto.AdminRecentEventResponse;
@@ -53,6 +54,7 @@ public class AdminService {
 	private static final String DEVICE_ONLINE = "ONLINE";
 	private static final String DEVICE_OFFLINE = "OFFLINE";
 	private static final String RASPBERRY_PI_ACTIVE = "active";
+	private static final String DEFAULT_PHONE_NUMBER = "-";
 
 	private final AuthService authService;
 	private final AppUserRepository appUserRepository;
@@ -98,18 +100,37 @@ public class AdminService {
 	@Transactional(readOnly = true)
 	public List<AdminFacilityResponse> getFacilities(String authorization) {
 		requireAdmin(authorization);
-		Map<UUID, Long> cageCountByFacilityId = countCagesByFacilityId(cageRepository.findAll());
+		List<Cage> cages = cageRepository.findAll();
+		Map<UUID, Long> cageCountByFacilityId = countCagesByFacilityId(cages);
+		Map<UUID, Long> activeSessionCountByFacilityId =
+				countActiveSessionsByFacilityId(admissionSessionRepository.findAll());
+		Map<UUID, Long> deviceIssueCountByFacilityId =
+				countDeviceIssuesByFacilityId(cages, raspberryPiRepository.findAll());
 
 		return facilityRepository.findAll().stream()
 				.sorted(Comparator.comparing(Facility::getName, Comparator.nullsLast(String::compareTo)))
-				.map(facility -> new AdminFacilityResponse(
-						facility.getId(),
-						facility.getName(),
-						facility.getPhoneNumber(),
-						UNKNOWN_COLUMN_VALUE,
+				.map(facility -> toFacilityResponse(
+						facility,
 						cageCountByFacilityId.getOrDefault(facility.getId(), 0L),
-						UNKNOWN_COLUMN_VALUE))
+						activeSessionCountByFacilityId.getOrDefault(facility.getId(), 0L),
+						deviceIssueCountByFacilityId.getOrDefault(facility.getId(), 0L)))
 				.toList();
+	}
+
+	@Transactional
+	public AdminFacilityResponse createFacility(String authorization, AdminFacilityCreateRequest request) {
+		requireAdmin(authorization);
+		String facilityName = request.facilityName().trim();
+		if (facilityRepository.existsByName(facilityName)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Facility name already exists");
+		}
+
+		Facility facility = Facility.builder()
+				.name(facilityName)
+				.phoneNumber(normalizePhoneNumber(request.phoneNumber()))
+				.build();
+
+		return toFacilityResponse(facilityRepository.save(facility), 0L, 0L, 0L);
 	}
 
 	@Transactional(readOnly = true)
@@ -289,6 +310,22 @@ public class AdminService {
 		return currentPet == null ? null : currentPet.getName();
 	}
 
+	private AdminFacilityResponse toFacilityResponse(
+			Facility facility,
+			long cageCount,
+			long activeSessionCount,
+			long deviceIssueCount) {
+		return new AdminFacilityResponse(
+				facility.getId(),
+				facility.getName(),
+				facility.getPhoneNumber(),
+				UNKNOWN_COLUMN_VALUE,
+				cageCount,
+				activeSessionCount,
+				deviceIssueCount,
+				UNKNOWN_COLUMN_VALUE);
+	}
+
 	private AdminCageAssignmentResponse toAssignmentResponse(Cage cage) {
 		Facility facility = cage.getFacility();
 		return new AdminCageAssignmentResponse(
@@ -299,6 +336,10 @@ public class AdminService {
 				facility == null ? null : facility.getName(),
 				cage.getRaspberryPiDeviceId(),
 				cage.getStatus());
+	}
+
+	private String normalizePhoneNumber(String phoneNumber) {
+		return StringUtils.hasText(phoneNumber) ? phoneNumber.trim() : DEFAULT_PHONE_NUMBER;
 	}
 
 	private String nullToEmpty(String value) {

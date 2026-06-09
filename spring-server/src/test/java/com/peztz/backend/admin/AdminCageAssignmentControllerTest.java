@@ -3,6 +3,7 @@ package com.peztz.backend.admin;
 import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -85,6 +86,51 @@ class AdminCageAssignmentControllerTest {
 	void setUp() {
 		createTables();
 		deleteRows();
+	}
+
+	@Test
+	void adminCanCreateFacilityAndItAppearsInFacilityListAndSummary() throws Exception {
+		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
+		saveToken(ADMIN_TOKEN, admin);
+
+		mockMvc.perform(post("/api/admin/facilities")
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of(
+								"facilityName", "Happy Hospital",
+								"phoneNumber", "051-123-4567"))))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.facilityName").value("Happy Hospital"))
+				.andExpect(jsonPath("$.phoneNumber").value("051-123-4567"))
+				.andExpect(jsonPath("$.type").value("-"))
+				.andExpect(jsonPath("$.cageCount").value(0))
+				.andExpect(jsonPath("$.activeSessionCount").value(0))
+				.andExpect(jsonPath("$.deviceIssueCount").value(0))
+				.andExpect(jsonPath("$.status").value("-"));
+
+		mockMvc.perform(get("/api/admin/facilities")
+						.header("Authorization", "Bearer " + ADMIN_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].facilityName").value("Happy Hospital"))
+				.andExpect(jsonPath("$[0].phoneNumber").value("051-123-4567"))
+				.andExpect(jsonPath("$[0].cageCount").value(0));
+
+		mockMvc.perform(get("/api/admin/summary")
+						.header("Authorization", "Bearer " + ADMIN_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.totalFacilities").value(1));
+	}
+
+	@Test
+	void facilityNameIsRequiredForAdminFacilityCreate() throws Exception {
+		AppUser admin = saveUser("admin@example.com", "Admin", "ADMIN", null);
+		saveToken(ADMIN_TOKEN, admin);
+
+		mockMvc.perform(post("/api/admin/facilities")
+						.header("Authorization", "Bearer " + ADMIN_TOKEN)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(Map.of("phoneNumber", "051-123-4567"))))
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test
