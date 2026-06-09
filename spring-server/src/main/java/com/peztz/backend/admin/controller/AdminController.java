@@ -1,4 +1,4 @@
-package com.peztz.backend.admin.controller;
+source venv/bin/activatepackage com.peztz.backend.admin.controller;
 
 import java.util.List;
 import java.util.UUID;

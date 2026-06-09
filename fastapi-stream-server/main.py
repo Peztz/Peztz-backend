@@ -1,10 +1,24 @@
 import os
 from typing import Any
 
+import json
 import httpx
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
+# 여기서 부터는 LLM 코드 
+import asyncpg
+from pydantic import BaseModel
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+import os
+
+# .env 파일 로드 (GEMINI_API_KEY 환경변수를 불러옵니다)
+load_dotenv()
+
+# 제미나이 클라이언트 초기화 (위의 httpx client와 겹치지 않게 이름을 분리했습니다)
+gemini_client = genai.Client()
 
 
 DEFAULT_SPRING_BOOT_BASE_URL = "http://34.50.7.78:8080"
@@ -256,3 +270,104 @@ def _stream_headers() -> dict[str, str]:
         "Pragma": "no-cache",
         "X-Accel-Buffering": "no",
     }
+
+# 여기서는 llm 
+DB_USER = os.getenv("DB_USER", "postgres")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "peztz123@")
+DB_HOST = os.getenv("DB_HOST", "34.50.7.78")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "Peztz_DB")
+
+class ReportRequest(BaseModel):
+    cage_id: str  
+    pet_name: str
+
+@app.post("/api/report/generate")
+async def generate_pet_report(request: ReportRequest):
+    conn = None
+    try:
+        # 1. PostgreSQL DB 연결
+        conn = await asyncpg.connect(
+            user=DB_USER, password=DB_PASSWORD,
+            database=DB_NAME, host=DB_HOST, port=DB_PORT
+        )
+        
+        # 2. 쿼리문 실행 (현재 케이지의 최근 20개 로그 추출)
+        query = """
+            SELECT l.log_type, l.data, l.created_at
+            FROM public.pet_logs l
+            JOIN public.access_sessions s ON l.session_id = s.session_id
+            WHERE s.cage_id = $1::uuid
+            ORDER BY l.created_at DESC
+            LIMIT 20
+        """
+        rows = await conn.fetch(query, request.cage_id)
+        
+        # 3. 데이터 가공
+        behavior_logs = []
+        for row in rows:
+            log_type = row['log_type']
+            log_data = row['data']
+            created_at = row['created_at'].strftime('%H:%M:%S') if row['created_at'] else ""
+            
+            if isinstance(log_data, dict):
+                log_data_str = json.dumps(log_data, ensure_ascii=False)
+            else:
+                log_data_str = str(log_data)
+                
+            behavior_logs.append(f"[{created_at} / {log_type}] {log_data_str}")
+        
+        if not behavior_logs:
+            behavior_logs = ["현재 세션에 누적된 Vision AI 행동 로그가 존재하지 않습니다. 반려동물이 매우 평온하고 안정적인 상태입니다."]
+
+        # 4. 프롬프트 세팅
+        system_instruction = (
+            "당신은 실시간 모니터링 시스템과 Vision AI(YOLO) 시계열 로그를 기반으로 반려동물의 행동을 분석하는 전문 수의사 AI입니다. "
+            "제공된 펫 로그를 꼼꼼하게 분석하여 보호자가 직관적으로 이해할 수 있는 '일일 건강 리포트'를 마크다운 서식으로 작성해 주세요."
+        )
+        
+        user_message = f"""
+        분석 대상 반려동물 이름: {request.pet_name}
+        
+        [데이터베이스 추출 실시간 Vision AI 행동 로그]
+        {chr(10).join(behavior_logs)}
+        
+        위 시계열 로그 데이터를 기반으로 아래 레이아웃에 맞춰 친절한 한국어로 리포트를 출력해줘:
+        
+        ## 🐾 오늘의 요약
+        - 오늘 하루 아이의 전반적인 상태를 직관적인 문장으로 요약해 주세요.
+        
+        ## 📊 Vision AI 행동 분석
+        - 로그 내용을 인용하여 상세히 분석해 주세요.
+        
+        ## 🩺 수의사 AI의 행동 가이드
+        - 맞춤형 케어 팁을 제시해 주세요.
+        """
+
+        # 5. Gemini 호출
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=user_message,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.6,
+            ),
+        )
+        
+        ai_report_text = response.text
+
+        return {
+            "status": "success",
+            "cageId": request.cage_id,
+            "petName": request.pet_name,
+            "report": ai_report_text
+        }
+
+    except Exception as e:
+        # 터미널에 진짜 에러 원인을 찍어주는 로직 유지
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+        
+    finally:
+        if conn:
+            await conn.close()
