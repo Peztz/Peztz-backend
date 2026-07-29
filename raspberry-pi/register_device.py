@@ -1,11 +1,11 @@
+import os
 import socket
 import subprocess
 import uuid
 import requests
 
-# 서버 주소
-SERVER_URL = "http://34.50.7.78:8080/api/raspberrypis/register"
-#http://192.168.150.113:8080/api/raspberrypis/register"
+SERVER_URL = os.getenv("PEZTZ_REGISTER_URL")
+DEVICE_API_KEY = os.getenv("PEZTZ_DEVICE_API_KEY")
 
 def get_ip():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -44,17 +44,28 @@ def get_mac():
     return mac
 
 def send_info():
+    if not SERVER_URL:
+        raise RuntimeError("PEZTZ_REGISTER_URL is not configured")
+    if not DEVICE_API_KEY:
+        raise RuntimeError("PEZTZ_DEVICE_API_KEY is not configured")
+
     data = {
         "macAddress": get_mac().upper(),
         "lastIp": get_register_ip()
     }
-    print(f"전송 데이터: {data}")
-    
+
     try:
-        res = requests.post(SERVER_URL, json=data)
-        print(f"서버 응답: {res.status_code} / {res.text}")
-    except Exception as e:
-        print(f"전송 실패: {e}")
+        response = requests.post(
+            SERVER_URL,
+            json=data,
+            headers={"X-Device-Api-Key": DEVICE_API_KEY},
+            timeout=10,
+        )
+        response.raise_for_status()
+        print(f"Device registration completed: HTTP {response.status_code}")
+    except requests.RequestException:
+        print("Device registration failed")
+        raise
 
 if __name__ == "__main__":
     send_info()

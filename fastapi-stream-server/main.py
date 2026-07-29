@@ -1,9 +1,12 @@
+import asyncio
+import hmac
+import json
+import logging
 import os
 from typing import Any
 
-import json
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 # 여기서 부터는 LLM 코드 
@@ -12,13 +15,11 @@ from pydantic import BaseModel
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-import os
 
 # .env 파일 로드 (GEMINI_API_KEY 환경변수를 불러옵니다)
 load_dotenv()
 
-# 제미나이 클라이언트 초기화 (위의 httpx client와 겹치지 않게 이름을 분리했습니다)
-gemini_client = genai.Client()
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_SPRING_BOOT_BASE_URL = "http://34.50.7.78:8080"
@@ -26,6 +27,10 @@ SPRING_BOOT_BASE_URL = os.getenv(
     "SPRING_BOOT_BASE_URL",
     DEFAULT_SPRING_BOOT_BASE_URL,
 ).rstrip("/")
+SPRING_INTERNAL_API_KEY = os.getenv("SPRING_INTERNAL_API_KEY", "")
+DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
+FASTAPI_INTERNAL_API_KEY = os.getenv("FASTAPI_INTERNAL_API_KEY", "")
+MEDIAMTX_PLAYBACK_BASE_URL = os.getenv("MEDIAMTX_PLAYBACK_BASE_URL", "").rstrip("/")
 
 MJPEG_MEDIA_TYPE = "multipart/x-mixed-replace; boundary=frame"
 
@@ -54,8 +59,10 @@ async def root() -> dict[str, Any]:
             "GET /health",
             "POST /register",
             "POST /device/{cage_id}/sensor",
+            "POST /device/events",
             "GET /video/{device_id}",
             "GET /video/by-mac?macAddress=...",
+            "GET /internal/cameras/{camera_id}/status",
         ],
     }
 
@@ -66,12 +73,21 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/register")
-async def register(request: Request) -> Response:
+async def register(
+    request: Request,
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+) -> Response:
+    _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
     return await _proxy_post_to_spring("/api/raspberrypis/register", request)
 
 
 @app.post("/device/{cage_id}/sensor")
-async def receive_sensor(cage_id: int, request: Request) -> dict[str, Any]:
+async def receive_sensor(
+    cage_id: int,
+    request: Request,
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
     payload = await _read_json_payload(request)
     return {
         "status": "ok",
@@ -127,7 +143,11 @@ async def _get_stream_url_from_spring(
 
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, params=params)
+            response = await client.get(
+                url,
+                params=params,
+                headers=_spring_internal_headers(),
+            )
     except httpx.TimeoutException as exc:
         raise HTTPException(
             status_code=502,
@@ -166,7 +186,7 @@ async def _get_stream_url_from_spring(
 async def _proxy_post_to_spring(path: str, request: Request) -> Response:
     url = f"{SPRING_BOOT_BASE_URL}{path}"
     body = await request.body()
-    headers = {}
+    headers = _spring_internal_headers()
 
     content_type = request.headers.get("content-type")
     if content_type:
@@ -271,21 +291,135 @@ def _stream_headers() -> dict[str, str]:
         "X-Accel-Buffering": "no",
     }
 
+
+def _spring_internal_headers() -> dict[str, str]:
+    if not SPRING_INTERNAL_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Spring internal API key is not configured",
+        )
+    return {"X-Internal-Api-Key": SPRING_INTERNAL_API_KEY}
+
+
+def _require_api_key(
+    provided_api_key: str | None,
+    configured_api_key: str,
+    key_name: str,
+) -> None:
+    if not configured_api_key:
+        raise HTTPException(status_code=503, detail=f"{key_name} is not configured")
+    if not provided_api_key or not hmac.compare_digest(provided_api_key, configured_api_key):
+        raise HTTPException(status_code=401, detail=f"Invalid {key_name.lower()}")
+
+
+class PetEventResult(BaseModel):
+    externalEventId: str
+    petId: str
+    cameraId: str
+    eventType: str
+    confidence: float
+    occurredAt: str
+    videoUrl: str | None = None
+    thumbnailUrl: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+@app.post("/device/events")
+async def forward_pet_event(
+    event: PetEventResult,
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+) -> Response:
+    _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
+    url = f"{SPRING_BOOT_BASE_URL}/api/internal/pet-events"
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                json=event.model_dump(),
+                headers=_spring_internal_headers(),
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=502, detail="Spring event API timeout") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Spring event API request failed") from exc
+
+    return Response(
+        content=response.content,
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
+    )
+
+
+camera_runtime_statuses: dict[str, str] = {}
+
+
+def _camera_runtime_response(camera_id: str) -> dict[str, Any]:
+    return {
+        "cameraId": camera_id,
+        "status": camera_runtime_statuses.get(camera_id, "IDLE"),
+        "playbackUrl": None,
+        "message": "Camera control skeleton only; no RTSP or MediaMTX process was started",
+    }
+
+
+@app.get("/internal/cameras/{camera_id}/status")
+async def camera_runtime_status(
+    camera_id: str,
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
+    return _camera_runtime_response(camera_id)
+
+
+@app.post("/internal/cameras/{camera_id}/live/start")
+async def start_camera_live_skeleton(
+    camera_id: str,
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
+    camera_runtime_statuses[camera_id] = "NOT_IMPLEMENTED"
+    return _camera_runtime_response(camera_id)
+
+
+@app.post("/internal/cameras/{camera_id}/live/stop")
+async def stop_camera_live_skeleton(
+    camera_id: str,
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
+    camera_runtime_statuses[camera_id] = "IDLE"
+    return _camera_runtime_response(camera_id)
+
 # 여기서는 llm 
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "peztz123@")
-DB_HOST = os.getenv("DB_HOST", "34.50.7.78")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "Peztz_DB")
+DB_NAME = os.getenv("DB_NAME")
 
 class ReportRequest(BaseModel):
     cage_id: str  
     pet_name: str
 
+
+def _generate_gemini_report(user_message: str, system_instruction: str):
+    return genai.Client().models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.6,
+        ),
+    )
+
 @app.post("/api/report/generate")
 async def generate_pet_report(request: ReportRequest):
     conn = None
     try:
+        if not all((DB_USER, DB_PASSWORD, DB_HOST, DB_NAME)):
+            raise RuntimeError("Database configuration is incomplete")
+
         # 1. PostgreSQL DB 연결
         conn = await asyncpg.connect(
             user=DB_USER, password=DB_PASSWORD,
@@ -296,7 +430,7 @@ async def generate_pet_report(request: ReportRequest):
         query = """
             SELECT l.log_type, l.data, l.created_at
             FROM public.pet_logs l
-            JOIN public.access_sessions s ON l.session_id = s.session_id
+            JOIN public.access_session s ON l.session_id = s.session_id
             WHERE s.cage_id = $1::uuid
             ORDER BY l.created_at DESC
             LIMIT 20
@@ -345,13 +479,10 @@ async def generate_pet_report(request: ReportRequest):
         """
 
         # 5. Gemini 호출
-        response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.6,
-            ),
+        response = await asyncio.to_thread(
+            _generate_gemini_report,
+            user_message,
+            system_instruction,
         )
         
         ai_report_text = response.text
@@ -363,10 +494,9 @@ async def generate_pet_report(request: ReportRequest):
             "report": ai_report_text
         }
 
-    except Exception as e:
-        # 터미널에 진짜 에러 원인을 찍어주는 로직 유지
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.exception("Pet report generation failed")
+        raise HTTPException(status_code=500, detail="Pet report generation failed") from exc
         
     finally:
         if conn:

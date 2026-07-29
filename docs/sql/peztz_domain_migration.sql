@@ -58,3 +58,55 @@ alter table public.cage
     alter column created_at set not null;
 
 create index if not exists idx_cage_hospital_id on public.cage(hospital_id);
+
+-- Camera metadata. A Cage has exactly one camera. The Cage owns the
+-- user, current pet, and Raspberry Pi relationships, so they are not
+-- duplicated here. RTSP URLs and credentials are not stored here.
+create table if not exists public.camera (
+    camera_id uuid primary key,
+    cage_id uuid not null unique references public.cage(cage_id) on delete restrict,
+    name varchar(100) not null,
+    status varchar(50) not null,
+    stream_status varchar(50) not null,
+    rtsp_config_key varchar(255),
+    created_at timestamp with time zone not null,
+    updated_at timestamp with time zone not null
+);
+
+-- Abnormal behavior event metadata. MP4 and thumbnail binaries belong in
+-- object storage; only their URLs and event metadata are stored in PostgreSQL.
+create table if not exists public.pet_event (
+    event_id uuid primary key,
+    external_event_id varchar(100) not null unique,
+    pet_id uuid not null,
+    camera_id uuid not null references public.camera(camera_id) on delete restrict,
+    event_type varchar(50) not null,
+    confidence double precision not null check (confidence >= 0 and confidence <= 1),
+    occurred_at timestamp with time zone not null,
+    video_url text,
+    thumbnail_url text,
+    metadata_json jsonb not null default '{}'::jsonb,
+    created_at timestamp with time zone not null
+);
+
+do $$
+begin
+    if not exists (
+        select 1 from pg_constraint where conname = 'fk_pet_event_pet'
+    ) then
+        if to_regclass('public.pets') is not null then
+            execute 'alter table public.pet_event add constraint fk_pet_event_pet '
+                    'foreign key (pet_id) references public.pets(pet_id) on delete restrict';
+        elsif to_regclass('public."Pets"') is not null then
+            execute 'alter table public.pet_event add constraint fk_pet_event_pet '
+                    'foreign key (pet_id) references public."Pets"(pet_id) on delete restrict';
+        else
+            raise exception 'Neither public.pets nor public."Pets" exists';
+        end if;
+    end if;
+end $$;
+
+create index if not exists idx_pet_event_pet_occurred_at
+    on public.pet_event(pet_id, occurred_at desc);
+create index if not exists idx_pet_event_camera_occurred_at
+    on public.pet_event(camera_id, occurred_at desc);

@@ -352,3 +352,48 @@ Authorization: Bearer sample-token
 ```
 
 If there are no logs for the date, the API returns count `0`, null averages, and a summary instead of a 500 error.
+
+## Camera And Abnormal Event Flow
+
+Camera APIs use the existing Bearer access token and only return cameras owned
+through the camera's Cage. A Cage can have exactly one camera. RTSP URLs, account names, passwords, and
+`rtspConfigKey` are never included in response DTOs.
+
+```text
+POST /api/cameras
+GET /api/cameras/my
+GET /api/cameras/{cameraId}
+PUT /api/cameras/{cameraId}
+GET /api/cameras/{cameraId}/runtime-status
+```
+
+`rtspConfigKey` is an optional reference to configuration stored on the
+Raspberry Pi or in a secret store. It is not the RTSP URL itself.
+
+Camera registration requires `cageId`, `name`, and optionally `rtspConfigKey`.
+Camera updates only accept `name` and `rtspConfigKey`; moving a camera to a
+different Cage is intentionally not supported by this API.
+
+FastAPI stores abnormal behavior metadata through an internal-key protected API:
+
+```text
+POST /api/internal/pet-events
+X-Internal-Api-Key: {PEZTZ_INTERNAL_API_KEY}
+```
+
+The body includes `externalEventId`, `petId`, `cameraId`, `eventType`,
+`confidence`, `occurredAt`, `videoUrl`, `thumbnailUrl`, and optional `metadata`.
+Repeating the same `externalEventId` returns the existing event.
+The submitted pet must be the current pet assigned to the camera's Cage at the
+time Spring receives the event; the event keeps its own `petId` as history.
+
+Owners read their events through:
+
+```text
+GET /api/pet-events/my
+GET /api/pet-events/my?petId={petId}
+GET /api/pet-events/{eventId}
+```
+
+`videoUrl` and `thumbnailUrl` are metadata references only. Video and image
+binaries are not stored in PostgreSQL.

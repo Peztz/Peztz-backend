@@ -10,8 +10,12 @@ Tailscale IP directly.
 - `GET /health`
 - `POST /register`
 - `POST /device/{cage_id}/sensor`
+- `POST /device/events`
 - `GET /video/{device_id}`
 - `GET /video/by-mac?macAddress=88:A2:9E:3D:02:BD`
+- `GET /internal/cameras/{camera_id}/status`
+- `POST /internal/cameras/{camera_id}/live/start`
+- `POST /internal/cameras/{camera_id}/live/stop`
 
 `/register` proxies Raspberry Pi registration requests to Spring Boot:
 
@@ -79,6 +83,23 @@ Default value:
 ```text
 http://34.50.7.78:8080
 ```
+
+Production deployments must also configure these secrets. They have no source
+code defaults:
+
+```text
+SPRING_INTERNAL_API_KEY
+DEVICE_API_KEY
+FASTAPI_INTERNAL_API_KEY
+```
+
+`MEDIAMTX_PLAYBACK_BASE_URL` is reserved for the next live-stream phase. The
+current start/stop endpoints only return `NOT_IMPLEMENTED`/`IDLE` state and do
+not start RTSP, ffmpeg, or MediaMTX.
+
+Raspberry Pi registration and `/device/events` require `X-Device-Api-Key`.
+Spring-to-FastAPI camera control requires `X-Internal-Api-Key`. FastAPI sends
+`SPRING_INTERNAL_API_KEY` to Spring internal APIs.
 
 Linux/macOS:
 

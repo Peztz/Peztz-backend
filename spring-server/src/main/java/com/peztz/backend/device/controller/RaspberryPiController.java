@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.peztz.backend.common.InternalApiKeyService;
 import com.peztz.backend.device.dto.RaspberryPiRegisterRequest;
 import com.peztz.backend.device.dto.RaspberryPiResponse;
 import com.peztz.backend.device.dto.RaspberryPiStreamResponse;
@@ -34,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class RaspberryPiController {
 
 	private final RaspberryPiService raspberryPiService;
+	private final InternalApiKeyService internalApiKeyService;
 
 	@Operation(
 			summary = "라즈베리파이 등록 또는 상태 갱신",
@@ -49,7 +52,10 @@ public class RaspberryPiController {
 					@ApiResponse(responseCode = "500", description = "서버 내부 오류", content = @Content)
 			})
 	@PostMapping("/register")
-	public ResponseEntity<RaspberryPiResponse> register(@Valid @RequestBody RaspberryPiRegisterRequest request) {
+	public ResponseEntity<RaspberryPiResponse> register(
+			@RequestHeader(value = "X-Internal-Api-Key", required = false) String internalApiKey,
+			@Valid @RequestBody RaspberryPiRegisterRequest request) {
+		internalApiKeyService.requireValid(internalApiKey);
 		return ResponseEntity.ok(raspberryPiService.register(request));
 	}
 
@@ -66,7 +72,9 @@ public class RaspberryPiController {
 					@ApiResponse(responseCode = "500", description = "서버 내부 오류", content = @Content)
 			})
 	@GetMapping
-	public ResponseEntity<List<RaspberryPiResponse>> findAll() {
+	public ResponseEntity<List<RaspberryPiResponse>> findAll(
+			@RequestHeader(value = "X-Internal-Api-Key", required = false) String internalApiKey) {
+		internalApiKeyService.requireValid(internalApiKey);
 		return ResponseEntity.ok(raspberryPiService.findAll());
 	}
 
@@ -86,8 +94,10 @@ public class RaspberryPiController {
 			})
 	@GetMapping("/{deviceId}/stream-url")
 	public ResponseEntity<RaspberryPiStreamResponse> getStreamUrl(
+			@RequestHeader(value = "X-Internal-Api-Key", required = false) String internalApiKey,
 			@Parameter(description = "라즈베리파이 장치 UUID", example = "1b03c87c-0f82-4b26-8f23-f4b6cfd8f3a1")
 			@PathVariable UUID deviceId) {
+		internalApiKeyService.requireValid(internalApiKey);
 		return ResponseEntity.ok(raspberryPiService.getStreamUrl(deviceId));
 	}
 
@@ -107,8 +117,10 @@ public class RaspberryPiController {
 			})
 	@GetMapping("/stream-url")
 	public ResponseEntity<RaspberryPiStreamResponse> getStreamUrlByMacAddress(
+			@RequestHeader(value = "X-Internal-Api-Key", required = false) String internalApiKey,
 			@Parameter(description = "라즈베리파이 MAC 주소", example = "88:A2:9E:3D:02:BD", required = true)
 			@RequestParam String macAddress) {
+		internalApiKeyService.requireValid(internalApiKey);
 		return ResponseEntity.ok(raspberryPiService.getStreamUrlByMacAddress(macAddress));
 	}
 }
