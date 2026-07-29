@@ -8,7 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 
 @Schema(description = "Pet abnormal behavior event response")
 public record PetEventResponse(
-		UUID eventId,
+		Long eventId,
 		String externalEventId,
 		UUID petId,
 		String petName,
@@ -16,7 +16,11 @@ public record PetEventResponse(
 		String cameraName,
 		String eventType,
 		Double confidence,
-		OffsetDateTime occurredAt,
+		OffsetDateTime eventEndedAt,
+		Integer eventDurationSeconds,
+		OffsetDateTime clipStartAt,
+		OffsetDateTime clipEndAt,
+		Integer clipDurationSeconds,
 		String videoUrl,
 		String thumbnailUrl,
 		Map<String, Object> metadata,

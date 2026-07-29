@@ -1,8 +1,10 @@
 package com.peztz.backend.event.service;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -12,14 +14,19 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.peztz.backend.admission.entity.AdmissionSession;
+import com.peztz.backend.admission.repository.AdmissionSessionRepository;
+import com.peztz.backend.admission.service.AdmissionSessionService;
 import com.peztz.backend.auth.entity.AppUser;
 import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.camera.entity.Camera;
 import com.peztz.backend.camera.service.CameraService;
 import com.peztz.backend.event.dto.PetEventCreateRequest;
 import com.peztz.backend.event.dto.PetEventResponse;
-import com.peztz.backend.event.entity.PetEvent;
-import com.peztz.backend.event.repository.PetEventRepository;
+import com.peztz.backend.log.entity.SessionLog;
+import com.peztz.backend.log.entity.SessionVideo;
+import com.peztz.backend.log.repository.SessionLogRepository;
+import com.peztz.backend.log.repository.SessionVideoRepository;
 import com.peztz.backend.pet.entity.Pet;
 import com.peztz.backend.pet.repository.PetRepository;
 
@@ -29,7 +36,11 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PetEventService {
 
-	private final PetEventRepository petEventRepository;
+	public static final String AI_EVENT_TYPE = "AI_EVENT";
+
+	private final SessionLogRepository sessionLogRepository;
+	private final SessionVideoRepository sessionVideoRepository;
+	private final AdmissionSessionRepository admissionSessionRepository;
 	private final PetRepository petRepository;
 	private final CameraService cameraService;
 	private final AuthService authService;
@@ -37,7 +48,7 @@ public class PetEventService {
 	@Transactional
 	public PetEventResponse createFromFastApi(PetEventCreateRequest request) {
 		String externalEventId = request.externalEventId().trim();
-		return petEventRepository.findByExternalEventId(externalEventId)
+		return sessionLogRepository.findByExternalEventId(externalEventId)
 				.map(this::toResponse)
 				.orElseGet(() -> createNewEvent(request, externalEventId));
 	}
@@ -45,21 +56,22 @@ public class PetEventService {
 	@Transactional(readOnly = true)
 	public List<PetEventResponse> findMine(String authorization, UUID petId) {
 		AppUser owner = authService.requireUser(authorization);
-		List<PetEvent> events;
+		List<SessionLog> events;
 		if (petId == null) {
-			events = petEventRepository.findByPetOwnerIdOrderByOccurredAtDesc(owner.getId());
+			events = sessionLogRepository.findByTypeAndSessionPetOwnerIdOrderByCreatedAtDesc(AI_EVENT_TYPE, owner.getId());
 		} else {
 			petRepository.findByIdAndOwnerId(petId, owner.getId())
 					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found"));
-			events = petEventRepository.findByPetIdAndPetOwnerIdOrderByOccurredAtDesc(petId, owner.getId());
+			events = sessionLogRepository.findByTypeAndSessionPetIdAndSessionPetOwnerIdOrderByCreatedAtDesc(
+					AI_EVENT_TYPE, petId, owner.getId());
 		}
 		return events.stream().map(this::toResponse).toList();
 	}
 
 	@Transactional(readOnly = true)
-	public PetEventResponse findMineById(String authorization, UUID eventId) {
+	public PetEventResponse findMineById(String authorization, Long eventId) {
 		AppUser owner = authService.requireUser(authorization);
-		PetEvent event = petEventRepository.findByIdAndPetOwnerId(eventId, owner.getId())
+		SessionLog event = sessionLogRepository.findByIdAndTypeAndSessionPetOwnerId(eventId, AI_EVENT_TYPE, owner.getId())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet event not found"));
 		return toResponse(event);
 	}
@@ -73,38 +85,130 @@ public class PetEventService {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pet is not currently assigned to the camera cage");
 		}
 
-		PetEvent event = PetEvent.builder()
-				.externalEventId(externalEventId)
-				.pet(pet)
+		AdmissionSession session = admissionSessionRepository
+				.findFirstByCageIdAndStatusOrderByCreatedAtDesc(camera.getCage().getId(), AdmissionSessionService.STATUS_ACTIVE)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "No active admission session for camera cage"));
+		if (!session.getPet().getId().equals(pet.getId())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Camera cage session does not belong to the pet");
+		}
+
+		SessionVideo video = createVideoIfPresent(session, request);
+		OffsetDateTime eventEndedAt = resolveEndTime(
+				request.occurredAt(), request.eventEndedAt(), request.eventDurationSeconds(), "Event");
+		SessionLog event = SessionLog.builder()
+				.session(session)
+				.videoId(video == null ? null : video.getId())
 				.camera(camera)
-				.eventType(request.eventType().trim().toUpperCase(Locale.ROOT))
-				.confidence(request.confidence())
-				.occurredAt(request.occurredAt())
-				.videoUrl(normalizeUrl(request.videoUrl()))
-				.thumbnailUrl(normalizeUrl(request.thumbnailUrl()))
-				.metadata(request.metadata() == null ? new HashMap<>() : new HashMap<>(request.metadata()))
+				.externalEventId(externalEventId)
+				.type(AI_EVENT_TYPE)
+				.data(eventData(request))
+				.createdAt(request.occurredAt())
+				.eventEndedAt(eventEndedAt)
+				.eventDurationSeconds(resolveDurationSeconds(
+						request.occurredAt(), eventEndedAt, request.eventDurationSeconds(), "Event"))
 				.build();
-		return toResponse(petEventRepository.save(event));
+		return toResponse(sessionLogRepository.save(event));
+	}
+
+	private SessionVideo createVideoIfPresent(AdmissionSession session, PetEventCreateRequest request) {
+		String videoUrl = normalizeUrl(request.videoUrl());
+		String thumbnailUrl = normalizeUrl(request.thumbnailUrl());
+		if (videoUrl == null && thumbnailUrl == null) {
+			return null;
+		}
+		OffsetDateTime clipEndedAt = resolveEndTime(
+				request.clipStartAt(), request.clipEndAt(), request.clipDurationSeconds(), "Clip");
+		return sessionVideoRepository.save(SessionVideo.builder()
+				.session(session)
+				.videoPath(videoUrl)
+				.thumbnailPath(thumbnailUrl)
+				.startTime(request.clipStartAt())
+				.endTime(clipEndedAt)
+				.duration(resolveDurationSeconds(
+						request.clipStartAt(), clipEndedAt, request.clipDurationSeconds(), "Clip"))
+				.build());
+	}
+
+	private OffsetDateTime resolveEndTime(
+			OffsetDateTime startedAt, OffsetDateTime suppliedEndedAt, Integer suppliedDuration, String subject) {
+		if (suppliedEndedAt != null || startedAt == null || suppliedDuration == null) {
+			return suppliedEndedAt;
+		}
+		try {
+			return startedAt.plusSeconds(suppliedDuration);
+		} catch (ArithmeticException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, subject + " end time is out of range", exception);
+		}
+	}
+
+	private Integer resolveDurationSeconds(
+			OffsetDateTime startedAt, OffsetDateTime endedAt, Integer suppliedDuration, String subject) {
+		if (suppliedDuration != null && suppliedDuration < 0) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, subject + " duration must not be negative");
+		}
+		if (startedAt == null || endedAt == null) {
+			return suppliedDuration;
+		}
+		if (endedAt.isBefore(startedAt)) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, subject + " end time must be after start time");
+		}
+		try {
+			return Math.toIntExact(Duration.between(startedAt, endedAt).toSeconds());
+		} catch (ArithmeticException exception) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, subject + " duration is too large", exception);
+		}
+	}
+
+	private Map<String, Object> eventData(PetEventCreateRequest request) {
+		Map<String, Object> data = new LinkedHashMap<>();
+		data.put("eventType", request.eventType().trim().toUpperCase());
+		data.put("confidence", request.confidence());
+		data.put("metadata", request.metadata() == null ? new HashMap<>() : new HashMap<>(request.metadata()));
+		return data;
 	}
 
 	private String normalizeUrl(String value) {
 		return StringUtils.hasText(value) ? value.trim() : null;
 	}
 
-	public PetEventResponse toResponse(PetEvent event) {
+	public PetEventResponse toResponse(SessionLog event) {
+		SessionVideo video = event.getVideoId() == null ? null : sessionVideoRepository.findById(event.getVideoId()).orElse(null);
 		return new PetEventResponse(
 				event.getId(),
 				event.getExternalEventId(),
-				event.getPet().getId(),
-				event.getPet().getName(),
+				event.getSession().getPet().getId(),
+				event.getSession().getPet().getName(),
 				event.getCamera().getId(),
 				event.getCamera().getName(),
-				event.getEventType(),
-				event.getConfidence(),
-				event.getOccurredAt(),
-				event.getVideoUrl(),
-				event.getThumbnailUrl(),
-				new HashMap<>(event.getMetadata()),
+				stringValue(event.getData().get("eventType")),
+				numberValue(event.getData().get("confidence")),
+				event.getEventEndedAt(),
+				event.getEventDurationSeconds(),
+				video == null ? null : video.getStartTime(),
+				video == null ? null : video.getEndTime(),
+				video == null ? null : video.getDuration(),
+				video == null ? null : video.getVideoPath(),
+				video == null ? null : video.getThumbnailPath(),
+				metadataValue(event.getData().get("metadata")),
 				event.getCreatedAt());
+	}
+
+	private String stringValue(Object value) {
+		return value == null ? null : value.toString();
+	}
+
+	private Double numberValue(Object value) {
+		if (value instanceof Number number) {
+			return number.doubleValue();
+		}
+		return value == null ? null : Double.valueOf(value.toString());
+	}
+
+	@SuppressWarnings("unchecked")
+	private Map<String, Object> metadataValue(Object value) {
+		if (value instanceof Map<?, ?> map) {
+			return new HashMap<>((Map<String, Object>) map);
+		}
+		return new HashMap<>();
 	}
 }

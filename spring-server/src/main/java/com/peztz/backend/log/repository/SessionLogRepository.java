@@ -2,6 +2,7 @@ package com.peztz.backend.log.repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -30,4 +31,15 @@ public interface SessionLogRepository extends JpaRepository<SessionLog, Long> {
 			@Param("petId") UUID petId,
 			@Param("start") OffsetDateTime start,
 			@Param("end") OffsetDateTime end);
+
+	Optional<SessionLog> findByExternalEventId(String externalEventId);
+
+	List<SessionLog> findByTypeAndSessionPetOwnerIdOrderByCreatedAtDesc(String type, UUID ownerId);
+
+	List<SessionLog> findByTypeAndSessionPetIdAndSessionPetOwnerIdOrderByCreatedAtDesc(
+			String type,
+			UUID petId,
+			UUID ownerId);
+
+	Optional<SessionLog> findByIdAndTypeAndSessionPetOwnerId(Long id, String type, UUID ownerId);
 }

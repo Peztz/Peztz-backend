@@ -6,6 +6,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import com.peztz.backend.admission.entity.AdmissionSession;
+import com.peztz.backend.camera.entity.Camera;
 
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -47,6 +48,13 @@ public class SessionLog {
 	@Column(name = "video_id")
 	private Long videoId;
 
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "camera_id")
+	private Camera camera;
+
+	@Column(name = "external_event_id", unique = true, length = 100)
+	private String externalEventId;
+
 	@Column(name = "log_type", nullable = false, length = 50)
 	private String type;
 
@@ -56,6 +64,12 @@ public class SessionLog {
 
 	@Column(name = "created_at", nullable = false)
 	private OffsetDateTime createdAt;
+
+	@Column(name = "event_ended_at")
+	private OffsetDateTime eventEndedAt;
+
+	@Column(name = "event_duration_seconds")
+	private Integer eventDurationSeconds;
 
 	public String getMessage() {
 		Object value = getDataValue("message");

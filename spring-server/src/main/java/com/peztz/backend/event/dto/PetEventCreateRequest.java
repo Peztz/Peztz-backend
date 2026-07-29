@@ -9,6 +9,7 @@ import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 @Schema(description = "FastAPI abnormal behavior event request")
@@ -30,6 +31,18 @@ public record PetEventCreateRequest(
 
 		@NotNull
 		OffsetDateTime occurredAt,
+
+		OffsetDateTime eventEndedAt,
+
+		@PositiveOrZero
+		Integer eventDurationSeconds,
+
+		OffsetDateTime clipStartAt,
+
+		OffsetDateTime clipEndAt,
+
+		@PositiveOrZero
+		Integer clipDurationSeconds,
 
 		@Size(max = 2048)
 		String videoUrl,

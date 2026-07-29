@@ -73,40 +73,21 @@ create table if not exists public.camera (
     updated_at timestamp with time zone not null
 );
 
--- Abnormal behavior event metadata. MP4 and thumbnail binaries belong in
--- object storage; only their URLs and event metadata are stored in PostgreSQL.
-create table if not exists public.pet_event (
-    event_id uuid primary key,
-    external_event_id varchar(100) not null unique,
-    pet_id uuid not null,
-    camera_id uuid not null references public.camera(camera_id) on delete restrict,
-    event_type varchar(50) not null,
-    confidence double precision not null check (confidence >= 0 and confidence <= 1),
-    occurred_at timestamp with time zone not null,
-    video_url text,
-    thumbnail_url text,
-    metadata_json jsonb not null default '{}'::jsonb,
-    created_at timestamp with time zone not null
-);
+-- AI abnormal behavior events reuse the existing pet_logs and pet_videos
+-- tables. The event clip URL and thumbnail URL stay in pet_videos; pet_logs
+-- identifies the camera and FastAPI retry key. created_at records the
+-- actual event detection (start) time supplied by FastAPI. The optional
+-- event_ended_at and event_duration_seconds fields record the duration of
+-- the behavior itself; the existing pet_videos time columns record the
+-- separate evidence-clip interval (including before/after buffer).
+alter table public.pet_logs
+    add column if not exists camera_id uuid references public.camera(camera_id) on delete restrict,
+    add column if not exists external_event_id varchar(100),
+    add column if not exists event_ended_at timestamp with time zone,
+    add column if not exists event_duration_seconds integer check (event_duration_seconds >= 0);
 
-do $$
-begin
-    if not exists (
-        select 1 from pg_constraint where conname = 'fk_pet_event_pet'
-    ) then
-        if to_regclass('public.pets') is not null then
-            execute 'alter table public.pet_event add constraint fk_pet_event_pet '
-                    'foreign key (pet_id) references public.pets(pet_id) on delete restrict';
-        elsif to_regclass('public."Pets"') is not null then
-            execute 'alter table public.pet_event add constraint fk_pet_event_pet '
-                    'foreign key (pet_id) references public."Pets"(pet_id) on delete restrict';
-        else
-            raise exception 'Neither public.pets nor public."Pets" exists';
-        end if;
-    end if;
-end $$;
-
-create index if not exists idx_pet_event_pet_occurred_at
-    on public.pet_event(pet_id, occurred_at desc);
-create index if not exists idx_pet_event_camera_occurred_at
-    on public.pet_event(camera_id, occurred_at desc);
+create unique index if not exists uq_pet_logs_external_event_id
+    on public.pet_logs(external_event_id)
+    where external_event_id is not null;
+create index if not exists idx_pet_logs_camera_created_at
+    on public.pet_logs(camera_id, created_at desc);

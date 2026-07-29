@@ -319,6 +319,11 @@ class PetEventResult(BaseModel):
     eventType: str
     confidence: float
     occurredAt: str
+    eventEndedAt: str | None = None
+    eventDurationSeconds: int | None = None
+    clipStartAt: str | None = None
+    clipEndAt: str | None = None
+    clipDurationSeconds: int | None = None
     videoUrl: str | None = None
     thumbnailUrl: str | None = None
     metadata: dict[str, Any] | None = None

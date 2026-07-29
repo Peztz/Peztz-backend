@@ -1,6 +1,8 @@
-# Peztz Frontend API Guide
+# Peztz 프론트엔드 API 연동 가이드
 
-Spring Boot API Base URL:
+## 서버 주소
+
+Spring Boot API 기본 주소:
 
 ```text
 http://34.50.7.78:8080
@@ -13,31 +15,32 @@ http://localhost:8080/swagger-ui/index.html
 http://34.50.7.78:8080/swagger-ui/index.html
 ```
 
-FastAPI video proxy:
+기존 FastAPI 영상 프록시 주소:
 
 ```text
 http://34.50.7.78:8000/video/{deviceId}
 ```
 
-## Production DB Notes
+## 운영 DB 유의사항
 
-The Spring domain API reuses the existing production tables:
+Spring 도메인 API는 아래 운영 테이블을 재사용합니다.
 
 ```text
 users, "Pets", hospitals, cage, access_session, pet_logs, pet_videos, raspberrypi
 ```
 
-Do not apply `docs/sql/peztz_domain_schema.sql` to production. It is deprecated and kept only as a warning file.
+`docs/sql/peztz_domain_schema.sql`은 폐기된 경고용 파일이므로 운영 DB에 적용하면 안 됩니다.
 
-Apply this migration before deployment:
+배포 전에는 아래 마이그레이션을 적용합니다.
 
 ```text
 docs/sql/peztz_domain_migration.sql
 ```
 
-The migration expands `users.password`, creates `auth_token`, and adds sequence/default settings for `access_session.session_id` and `pet_logs.log_id`.
+마이그레이션은 `users.password` 길이를 확장하고, `auth_token`을 생성하며,
+`access_session.session_id`와 `pet_logs.log_id`의 시퀀스·기본값을 보완합니다.
 
-## Recommended Integration Order
+## 권장 연동 순서
 
 1. `POST /api/auth/signup`
 2. `POST /api/auth/login`
@@ -51,11 +54,11 @@ The migration expands `users.password`, creates `auth_token`, and adds sequence/
 10. `GET /api/owners/me/cages`
 11. `GET /api/admission-sessions/{sessionId}/logs`
 12. `GET /api/reports/daily?petId={petId}&date=YYYY-MM-DD`
-13. Render video with `http://34.50.7.78:8000/video/{deviceId}`
+13. 기존 영상은 `http://34.50.7.78:8000/video/{deviceId}`로 표시
 
-## Auth Flow
+## 인증 흐름
 
-Create an account. `phoneNumber` is accepted for API compatibility but the current `users` table does not store it.
+회원가입 API입니다. `phoneNumber`는 API 호환성을 위해 받지만 현재 `users` 테이블에는 저장하지 않습니다.
 
 ```http
 POST /api/auth/signup
@@ -70,7 +73,7 @@ Content-Type: application/json
 }
 ```
 
-Login and store `accessToken`:
+로그인 후 반환된 `accessToken`을 저장합니다.
 
 ```http
 POST /api/auth/login
@@ -94,15 +97,16 @@ Content-Type: application/json
 }
 ```
 
-Use protected APIs with:
+인증이 필요한 API는 아래 헤더를 사용합니다.
 
 ```http
 Authorization: Bearer sample-token
 ```
 
-## Pet Flow
+## 반려동물 흐름
 
-Pets are stored in the existing `"Pets"` table. `name`, `breed`, and `memo` are persisted. `species`, `gender`, `birthDate`, and `weightKg` are accepted as nullable API fields but are not persisted unless the DB schema is extended later.
+반려동물은 기존 `"Pets"` 테이블에 저장합니다. `name`, `breed`, `memo`는 저장됩니다.
+`species`, `gender`, `birthDate`, `weightKg`는 nullable API 필드로 받지만, DB 스키마를 확장하기 전까지는 저장하지 않습니다.
 
 ```http
 POST /api/pets
@@ -125,7 +129,7 @@ GET /api/pets/my
 Authorization: Bearer sample-token
 ```
 
-Other pet APIs:
+기타 반려동물 API:
 
 ```text
 GET /api/pets/{petId}
@@ -133,15 +137,16 @@ PUT /api/pets/{petId}
 DELETE /api/pets/{petId}
 ```
 
-## Facility And Cage Flow
+## 시설 및 Cage 흐름
 
-Facilities are backed by `hospitals`. `address` is returned as `null` because the current table has no address column.
+시설은 `hospitals` 테이블을 사용합니다. 현재 테이블에는 주소 컬럼이 없으므로 `address`는 `null`로 반환됩니다.
 
 ```http
 GET /api/facilities
 ```
 
-The `cage` table stores `hospital_id`, `name`, `cage_number`, `status`, and the connected Raspberry Pi `device_id`. Facility cage responses should include `facilityId`, `name`, `cageNumber`, and `videoUrl` when a Raspberry Pi device is connected.
+`cage` 테이블은 `hospital_id`, `name`, `cage_number`, `status`, 연결된 Raspberry Pi `device_id`를 보관합니다.
+Raspberry Pi가 연결된 Cage 응답에는 `facilityId`, `name`, `cageNumber`, `videoUrl`이 포함됩니다.
 
 ```http
 GET /api/facilities/{facilityId}/cages
@@ -160,7 +165,7 @@ GET /api/facilities/{facilityId}/cages
 }
 ```
 
-Management APIs:
+시설/Cage 관리 API:
 
 ```text
 POST /api/facilities
@@ -171,18 +176,19 @@ PUT /api/cages/{cageId}
 DELETE /api/cages/{cageId}
 ```
 
-Facility admission APIs:
+시설 입실 관리 API:
 
 ```text
 GET /api/facilities/{facilityId}/owners/pets?email={ownerEmail}
 POST /api/facilities/{facilityId}/admission-sessions
 ```
 
-These APIs require `Authorization: Bearer {accessToken}` for a facility role such as `FACILITY_MANAGER` or `ADMIN`. Facility admission creates the same active session/access code used by `POST /api/admission-sessions/access-code/verify`.
+위 API는 `FACILITY_MANAGER` 또는 `ADMIN` 같은 시설 역할의 `Authorization: Bearer {accessToken}`이 필요합니다.
+시설 입실 API는 `POST /api/admission-sessions/access-code/verify`에서 사용하는 활성 세션과 접근 코드를 동일하게 생성합니다.
 
-## Admission Session Flow
+## 입실 세션 흐름
 
-Admission sessions are stored in `access_session`. `sessionId` is a numeric `bigint`, not a UUID.
+입실 세션은 `access_session`에 저장됩니다. `sessionId`는 UUID가 아닌 숫자형 `bigint`입니다.
 
 ```http
 POST /api/admission-sessions
@@ -208,14 +214,14 @@ Content-Type: application/json
 }
 ```
 
-Creating a session sets cage status to `OCCUPIED`. Ending a session sets session status to `ENDED` and cage status to `AVAILABLE`.
+세션을 생성하면 Cage 상태는 `OCCUPIED`가 됩니다. 세션을 종료하면 세션 상태는 `ENDED`, Cage 상태는 `AVAILABLE`이 됩니다.
 
 ```http
 PATCH /api/admission-sessions/{sessionId}/end
 Authorization: Bearer sample-token
 ```
 
-## Access Code Flow
+## 접근 코드 흐름
 
 ```http
 POST /api/admission-sessions/access-code/verify
@@ -236,9 +242,9 @@ Content-Type: application/json
 }
 ```
 
-Only `ACTIVE` sessions verify successfully.
+`ACTIVE` 상태의 세션만 접근 코드 검증에 성공합니다.
 
-## Owner Cage Flow
+## 보호자 Cage 조회 흐름
 
 ```http
 GET /api/owners/me/cages
@@ -260,21 +266,21 @@ Authorization: Bearer sample-token
 ]
 ```
 
-## Video Display Flow
+## 기존 영상 표시 흐름
 
-Prefer the `videoUrl` from cage/session responses:
+Cage/세션 응답의 `videoUrl`을 우선 사용합니다.
 
 ```html
-<img src="http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890" alt="live stream" />
+<img src="http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890" alt="실시간 스트림" />
 ```
 
-If only `raspberryPiDeviceId` is available:
+`raspberryPiDeviceId`만 있다면 다음처럼 주소를 만들 수 있습니다.
 
 ```javascript
 const videoUrl = `http://34.50.7.78:8000/video/${raspberryPiDeviceId}`;
 ```
 
-Existing Raspberry Pi metadata APIs remain available:
+기존 Raspberry Pi 메타데이터 API도 사용할 수 있습니다.
 
 ```text
 GET /api/raspberrypis
@@ -282,17 +288,19 @@ GET /api/raspberrypis/{deviceId}/stream-url
 GET /api/raspberrypis/stream-url?macAddress=...
 ```
 
-Frontend video playback should use the FastAPI proxy URL:
+프론트엔드의 기존 영상 재생은 FastAPI 프록시 URL을 사용합니다.
 
 ```text
 http://34.50.7.78:8000/video/{deviceId}
 ```
 
-`GET /api/raspberrypis/{deviceId}/stream-url` is for checking the internal upstream URL that FastAPI uses. The `raspberrypi.lastIp` value must be the Raspberry Pi Tailscale IP, normally `100.x.x.x`, so the GCP FastAPI server can reach `http://{lastIp}:8001/video_feed`. If the Raspberry Pi is powered off or `camera_stream.py` is not running, `GET /video/{deviceId}` can return `502` or timeout.
+`GET /api/raspberrypis/{deviceId}/stream-url`은 FastAPI가 사용하는 내부 업스트림 URL을 확인하는 용도입니다.
+`raspberrypi.lastIp`는 GCP FastAPI 서버가 `http://{lastIp}:8001/video_feed`에 접근할 수 있는 Raspberry Pi Tailscale IP여야 하며, 일반적으로 `100.x.x.x`입니다.
+Pi 전원이 꺼져 있거나 `camera_stream.py`가 실행 중이 아니면 `GET /video/{deviceId}`는 `502` 또는 timeout을 반환할 수 있습니다.
 
-## Session Log Flow
+## 세션 로그 흐름
 
-Logs are stored in `pet_logs`. `type` maps to `log_type`; `message`, `temperature`, and `humidity` are stored inside `data jsonb`.
+로그는 `pet_logs`에 저장됩니다. `type`은 `log_type`에 저장되며, `message`, `temperature`, `humidity`는 `data jsonb` 안에 저장됩니다.
 
 ```http
 POST /api/admission-sessions/{sessionId}/logs
@@ -325,9 +333,9 @@ Authorization: Bearer sample-token
 ]
 ```
 
-## Daily Report Flow
+## 일일 리포트 흐름
 
-Daily reports read `temperature` and `humidity` from `pet_logs.data`.
+일일 리포트는 `pet_logs.data`에서 `temperature`, `humidity`를 읽습니다.
 
 ```http
 GET /api/reports/daily?petId=7bf2b0d2-dd67-4002-929a-d4505f6af890&date=2026-06-08
@@ -351,13 +359,12 @@ Authorization: Bearer sample-token
 }
 ```
 
-If there are no logs for the date, the API returns count `0`, null averages, and a summary instead of a 500 error.
+해당 날짜에 로그가 없으면 `count`는 `0`, 평균값은 `null`이며 500 오류 대신 요약값을 반환합니다.
 
-## Camera And Abnormal Event Flow
+## 카메라 및 이상행동 이벤트 흐름
 
-Camera APIs use the existing Bearer access token and only return cameras owned
-through the camera's Cage. A Cage can have exactly one camera. RTSP URLs, account names, passwords, and
-`rtspConfigKey` are never included in response DTOs.
+카메라 API는 기존 Bearer 토큰을 사용하며, 카메라가 연결된 Cage의 현재 사용자만 조회할 수 있습니다.
+Cage당 카메라는 한 대만 등록할 수 있습니다. RTSP URL·계정·비밀번호·`rtspConfigKey`는 응답 DTO에 포함하지 않습니다.
 
 ```text
 POST /api/cameras
@@ -367,27 +374,23 @@ PUT /api/cameras/{cameraId}
 GET /api/cameras/{cameraId}/runtime-status
 ```
 
-`rtspConfigKey` is an optional reference to configuration stored on the
-Raspberry Pi or in a secret store. It is not the RTSP URL itself.
+`rtspConfigKey`는 Raspberry Pi 또는 시크릿 저장소에 보관한 RTSP 설정의 선택적 참조값입니다. RTSP URL 자체가 아닙니다.
 
-Camera registration requires `cageId`, `name`, and optionally `rtspConfigKey`.
-Camera updates only accept `name` and `rtspConfigKey`; moving a camera to a
-different Cage is intentionally not supported by this API.
+카메라 등록 요청에는 `cageId`, `name`, 선택적으로 `rtspConfigKey`를 전달합니다.
+카메라 수정은 `name`, `rtspConfigKey`만 받으며, 다른 Cage로 카메라를 옮기는 기능은 의도적으로 지원하지 않습니다.
 
-FastAPI stores abnormal behavior metadata through an internal-key protected API:
+FastAPI는 내부 API 키로 보호된 아래 API에 이상행동 메타데이터를 전달합니다.
 
 ```text
 POST /api/internal/pet-events
 X-Internal-Api-Key: {PEZTZ_INTERNAL_API_KEY}
 ```
 
-The body includes `externalEventId`, `petId`, `cameraId`, `eventType`,
-`confidence`, `occurredAt`, `videoUrl`, `thumbnailUrl`, and optional `metadata`.
-Repeating the same `externalEventId` returns the existing event.
-The submitted pet must be the current pet assigned to the camera's Cage at the
-time Spring receives the event; the event keeps its own `petId` as history.
+요청 본문에는 `externalEventId`, `petId`, `cameraId`, `eventType`, `confidence`, `occurredAt`, `videoUrl`, `thumbnailUrl`, 선택적 `metadata`가 포함됩니다.
+행동이 지속된 시간과 영상 클립 구간도 함께 기록하려면 선택적으로 `eventEndedAt`, `eventDurationSeconds`, `clipStartAt`, `clipEndAt`, `clipDurationSeconds`를 보냅니다.
+같은 `externalEventId`를 다시 보내면 기존 이벤트를 반환합니다. Spring은 수신 시점에 해당 반려동물이 카메라 Cage의 현재 반려동물인지 검증합니다.
 
-Owners read their events through:
+보호자는 아래 API로 이벤트를 조회합니다.
 
 ```text
 GET /api/pet-events/my
@@ -395,5 +398,7 @@ GET /api/pet-events/my?petId={petId}
 GET /api/pet-events/{eventId}
 ```
 
-`videoUrl` and `thumbnailUrl` are metadata references only. Video and image
-binaries are not stored in PostgreSQL.
+AI 이벤트는 기존 `pet_logs`의 `AI_EVENT` 행으로 저장됩니다. FastAPI가 보낸 `occurredAt`은 `pet_logs.created_at`에 저장하며, 이는 **이상행동이 시작되거나 감지된 시각**입니다. `eventEndedAt`과 `eventDurationSeconds`는 행동 자체가 종료된 시각과 지속 시간을 저장합니다.
+이벤트 클립 URL과 썸네일 URL은 로그가 참조하는 기존 `pet_videos` 행에 저장합니다. `clipStartAt`, `clipEndAt`, `clipDurationSeconds`는 전후 버퍼를 포함한 **증거 영상 클립**의 구간입니다. 시작·종료 시각이 모두 전달되면 Spring이 그 차이로 지속 시간을 계산해 저장하며, 종료 시각 없이 시작 시각과 지속 시간만 전달하면 종료 시각을 계산합니다.
+예를 들어 행동은 `14:03:10`부터 `14:03:15`까지 5초였지만, 확인 영상은 전후 버퍼를 포함해 `14:03:00`부터 `14:03:25`까지 25초일 수 있습니다. 영상·이미지 바이너리는 PostgreSQL에 저장하지 않습니다.
+응답의 시간 값은 UTC(`Z`) 형식일 수 있으므로, 프론트엔드는 사용자 시간대(한국은 `Asia/Seoul`)로 변환해 표시합니다.

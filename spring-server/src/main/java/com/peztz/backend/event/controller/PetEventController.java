@@ -38,7 +38,7 @@ public class PetEventController {
 	@GetMapping("/{eventId}")
 	public ResponseEntity<PetEventResponse> findById(
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@PathVariable UUID eventId) {
+			@PathVariable Long eventId) {
 		return ResponseEntity.ok(petEventService.findMineById(authorization, eventId));
 	}
 }
