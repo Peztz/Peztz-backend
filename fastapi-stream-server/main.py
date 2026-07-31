@@ -6,9 +6,9 @@ import os
 from typing import Any
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 # 여기서 부터는 LLM 코드 
 import asyncpg
 from pydantic import BaseModel
@@ -22,26 +22,19 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_SPRING_BOOT_BASE_URL = "http://34.50.7.78:8080"
-SPRING_BOOT_BASE_URL = os.getenv(
-    "SPRING_BOOT_BASE_URL",
-    DEFAULT_SPRING_BOOT_BASE_URL,
-).rstrip("/")
+SPRING_BOOT_BASE_URL = os.getenv("SPRING_BOOT_BASE_URL", "").rstrip("/")
 SPRING_INTERNAL_API_KEY = os.getenv("SPRING_INTERNAL_API_KEY", "")
 DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
 FASTAPI_INTERNAL_API_KEY = os.getenv("FASTAPI_INTERNAL_API_KEY", "")
 MEDIAMTX_PLAYBACK_BASE_URL = os.getenv("MEDIAMTX_PLAYBACK_BASE_URL", "").rstrip("/")
 
-MJPEG_MEDIA_TYPE = "multipart/x-mixed-replace; boundary=frame"
-
-app = FastAPI(title="Peztz FastAPI Video Proxy")
+app = FastAPI(title="Peztz FastAPI Device Integration")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
-        "http://34.50.7.78:8080",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -60,8 +53,6 @@ async def root() -> dict[str, Any]:
             "POST /register",
             "POST /device/{cage_id}/sensor",
             "POST /device/events",
-            "GET /video/{device_id}",
-            "GET /video/by-mac?macAddress=...",
             "GET /internal/cameras/{camera_id}/status",
         ],
     }
@@ -96,95 +87,8 @@ async def receive_sensor(
     }
 
 
-@app.head("/video/by-mac")
-async def video_by_mac_head(
-    macAddress: str = Query(..., min_length=1),
-) -> Response:
-    stream_url = await _get_stream_url_from_spring(
-        "/api/raspberrypis/stream-url",
-        params={"macAddress": macAddress},
-    )
-    return await _check_mjpeg_stream(stream_url)
-
-
-@app.get("/video/by-mac")
-async def video_by_mac(
-    macAddress: str = Query(..., min_length=1),
-) -> StreamingResponse:
-    stream_url = await _get_stream_url_from_spring(
-        "/api/raspberrypis/stream-url",
-        params={"macAddress": macAddress},
-    )
-    return await _proxy_mjpeg_stream(stream_url)
-
-
-@app.head("/video/{device_id}")
-async def video_by_device_id_head(device_id: str) -> Response:
-    stream_url = await _get_stream_url_from_spring(
-        f"/api/raspberrypis/{device_id}/stream-url",
-    )
-    return await _check_mjpeg_stream(stream_url)
-
-
-@app.get("/video/{device_id}")
-async def video_by_device_id(device_id: str) -> StreamingResponse:
-    stream_url = await _get_stream_url_from_spring(
-        f"/api/raspberrypis/{device_id}/stream-url",
-    )
-    return await _proxy_mjpeg_stream(stream_url)
-
-
-async def _get_stream_url_from_spring(
-    path: str,
-    params: dict[str, str] | None = None,
-) -> str:
-    url = f"{SPRING_BOOT_BASE_URL}{path}"
-    timeout = httpx.Timeout(10.0, connect=5.0)
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(
-                url,
-                params=params,
-                headers=_spring_internal_headers(),
-            )
-    except httpx.TimeoutException as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API timeout",
-        ) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API request failed",
-        ) from exc
-
-    if response.status_code == 404:
-        raise HTTPException(status_code=404, detail="Raspberry Pi device not found")
-
-    if response.status_code >= 400:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API returned an error",
-        )
-
-    try:
-        data: dict[str, Any] = response.json()
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API returned invalid JSON",
-        ) from exc
-
-    stream_url = data.get("streamUrl")
-    if not isinstance(stream_url, str) or not stream_url.strip():
-        raise HTTPException(status_code=400, detail="streamUrl is missing")
-
-    return stream_url.strip()
-
-
 async def _proxy_post_to_spring(path: str, request: Request) -> Response:
-    url = f"{SPRING_BOOT_BASE_URL}{path}"
+    url = _spring_boot_url(path)
     body = await request.body()
     headers = _spring_internal_headers()
 
@@ -223,75 +127,6 @@ async def _read_json_payload(request: Request) -> Any:
         return body.decode("utf-8", errors="replace") if body else None
 
 
-async def _proxy_mjpeg_stream(stream_url: str) -> StreamingResponse:
-    client, stream_context, upstream_response = await _open_mjpeg_upstream(stream_url)
-
-    async def stream_chunks():
-        try:
-            async for chunk in upstream_response.aiter_bytes():
-                if chunk:
-                    yield chunk
-        finally:
-            await stream_context.__aexit__(None, None, None)
-            await client.aclose()
-
-    return StreamingResponse(
-        stream_chunks(),
-        media_type=MJPEG_MEDIA_TYPE,
-        headers=_stream_headers(),
-    )
-
-
-async def _check_mjpeg_stream(stream_url: str) -> Response:
-    client, stream_context, _ = await _open_mjpeg_upstream(stream_url)
-    await stream_context.__aexit__(None, None, None)
-    await client.aclose()
-
-    return Response(
-        media_type=MJPEG_MEDIA_TYPE,
-        headers=_stream_headers(),
-    )
-
-
-async def _open_mjpeg_upstream(stream_url: str):
-    timeout = httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0)
-    client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
-    stream_context = client.stream("GET", stream_url)
-
-    try:
-        upstream_response = await stream_context.__aenter__()
-    except httpx.TimeoutException as exc:
-        await client.aclose()
-        raise HTTPException(
-            status_code=502,
-            detail="Raspberry Pi stream server timeout",
-        ) from exc
-    except httpx.RequestError as exc:
-        await client.aclose()
-        raise HTTPException(
-            status_code=502,
-            detail="Raspberry Pi stream server request failed",
-        ) from exc
-
-    if upstream_response.status_code >= 400:
-        await stream_context.__aexit__(None, None, None)
-        await client.aclose()
-        raise HTTPException(
-            status_code=502,
-            detail="Raspberry Pi stream server returned an error",
-        )
-
-    return client, stream_context, upstream_response
-
-
-def _stream_headers() -> dict[str, str]:
-    return {
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "X-Accel-Buffering": "no",
-    }
-
-
 def _spring_internal_headers() -> dict[str, str]:
     if not SPRING_INTERNAL_API_KEY:
         raise HTTPException(
@@ -299,6 +134,12 @@ def _spring_internal_headers() -> dict[str, str]:
             detail="Spring internal API key is not configured",
         )
     return {"X-Internal-Api-Key": SPRING_INTERNAL_API_KEY}
+
+
+def _spring_boot_url(path: str) -> str:
+    if not SPRING_BOOT_BASE_URL:
+        raise HTTPException(status_code=503, detail="Spring Boot base URL is not configured")
+    return f"{SPRING_BOOT_BASE_URL}{path}"
 
 
 def _require_api_key(
@@ -335,7 +176,7 @@ async def forward_pet_event(
     x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
 ) -> Response:
     _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
-    url = f"{SPRING_BOOT_BASE_URL}/api/internal/pet-events"
+    url = _spring_boot_url("/api/internal/pet-events")
     timeout = httpx.Timeout(10.0, connect=5.0)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:

@@ -22,7 +22,6 @@ import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.cage.repository.CageRepository;
 import com.peztz.backend.cage.service.CageService;
-import com.peztz.backend.cage.service.VideoUrlService;
 import com.peztz.backend.pet.entity.Pet;
 import com.peztz.backend.pet.repository.PetRepository;
 
@@ -39,7 +38,6 @@ public class AdmissionSessionService {
 	private final PetRepository petRepository;
 	private final CageRepository cageRepository;
 	private final AuthService authService;
-	private final VideoUrlService videoUrlService;
 	private final SecureRandom secureRandom = new SecureRandom();
 
 	@Transactional
@@ -97,8 +95,7 @@ public class AdmissionSessionService {
 				true,
 				session.getId(),
 				session.getPet().getName(),
-				getCageName(session.getCage()),
-				videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId()));
+				getCageName(session.getCage()));
 	}
 
 	@Transactional(readOnly = true)
@@ -115,8 +112,7 @@ public class AdmissionSessionService {
 						session.getCage().getId(),
 						getCageName(session.getCage()),
 						session.getCage().getFacility() == null ? null : session.getCage().getFacility().getName(),
-						session.getCage().getStatus(),
-						videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId())))
+						session.getCage().getStatus()))
 				.toList();
 	}
 
@@ -140,8 +136,7 @@ public class AdmissionSessionService {
 				session.getAccessCode(),
 				session.getStatus(),
 				session.getStartedAt(),
-				session.getEndedAtAsLocalDateTime(),
-				videoUrlService.buildVideoUrl(session.getCage().getRaspberryPiDeviceId()));
+				session.getEndedAtAsLocalDateTime());
 	}
 
 	private AdmissionSession createActiveSession(AppUser owner, Pet pet, Cage cage) {

@@ -20,7 +20,6 @@ import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.cage.dto.CageResponse;
 import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.cage.repository.CageRepository;
-import com.peztz.backend.cage.service.VideoUrlService;
 import com.peztz.backend.device.repository.RaspberryPiRepository;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
@@ -47,7 +46,6 @@ public class FacilityAdmissionService {
 	private final AdmissionSessionRepository admissionSessionRepository;
 	private final FacilityService facilityService;
 	private final AdmissionSessionService admissionSessionService;
-	private final VideoUrlService videoUrlService;
 
 	@Transactional(readOnly = true)
 	public List<FacilityOwnerPetResponse> findOwnerPets(String authorization, UUID facilityId, String ownerEmail) {
@@ -190,8 +188,7 @@ public class FacilityAdmissionService {
 				session.getAccessCode(),
 				session.getStatus(),
 				session.getStartedAt(),
-				null,
-				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()));
+				null);
 	}
 
 	private FacilityAdmissionSessionDetailResponse toDetailResponse(AdmissionSession session) {
@@ -209,8 +206,7 @@ public class FacilityAdmissionService {
 				session.getAccessCode(),
 				session.getStatus(),
 				session.getStartedAt(),
-				session.getEndedAtAsLocalDateTime(),
-				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()));
+				session.getEndedAtAsLocalDateTime());
 	}
 
 	private CageResponse toCageResponse(Cage cage) {
@@ -221,7 +217,6 @@ public class FacilityAdmissionService {
 				cage.getCageNumber(),
 				cage.getStatus(),
 				cage.getRaspberryPiDeviceId(),
-				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()),
 				cage.getCreatedAt());
 	}
 

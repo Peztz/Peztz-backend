@@ -18,8 +18,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		  "accessCode": "994413",
 		  "status": "ACTIVE",
 		  "startedAt": "2026-06-08T17:57:45",
-		  "endedAt": null,
-		  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890"
+		  "endedAt": null
 		}
 		""")
 public record FacilityAdmissionSessionDetailResponse(
@@ -57,8 +56,5 @@ public record FacilityAdmissionSessionDetailResponse(
 		LocalDateTime startedAt,
 
 		@Schema(description = "Session end time", example = "2026-06-08T18:15:54", nullable = true)
-		LocalDateTime endedAt,
-
-		@Schema(description = "FastAPI video proxy URL", example = "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890")
-		String videoUrl) {
+		LocalDateTime endedAt) {
 }

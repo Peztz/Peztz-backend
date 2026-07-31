@@ -7,8 +7,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		  "valid": true,
 		  "sessionId": 1000000002,
 		  "petName": "초코",
-		  "cageName": "A-1 케이지",
-		  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890"
+		  "cageName": "A-1 케이지"
 		}
 		""")
 public record AccessCodeVerifyResponse(
@@ -22,8 +21,5 @@ public record AccessCodeVerifyResponse(
 		String petName,
 
 		@Schema(description = "Cage name", example = "A-1 케이지")
-		String cageName,
-
-		@Schema(description = "FastAPI video proxy URL", example = "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890")
-		String videoUrl) {
+		String cageName) {
 }

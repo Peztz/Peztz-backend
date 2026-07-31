@@ -1,149 +1,48 @@
 # Peztz Backend
 
-실시간 모니터링 펫 케어 시스템의 백엔드 저장소입니다.
-본 프로젝트는 Spring Boot 기반 중앙 백엔드 서버와 Python/FastAPI 기반 영상·AI 처리 서버를 분리하여 개발합니다.
+Tapo C225 IP 카메라와 Raspberry Pi를 이용하는 반려동물 모니터링 백엔드입니다.
 
-## 프로젝트 구조
+## 구성
 
-```text
-Peztz-backend/
-│
-├── spring-server/
-│   └── Spring Boot 메인 백엔드 서버
-│
-├── fastapi-stream-server/
-│   └── Python/FastAPI 기반 영상 스트리밍 및 AI 분석 서버
-│
-├── raspberry-pi/
-│   └── 라즈베리파이에서 직접 실행하는 기기 등록 및 센서 전송 코드
-│
-├── docs/
-│   └── API 명세, DB 설계, 시스템 구조 문서
-│
-└── README.md
-```
+- `spring-server`: 인증, 반려동물·케이지·카메라·이상행동 이벤트 메타데이터를 관리하는 Spring Boot 서버
+- `fastapi-stream-server`: Raspberry Pi/FastAPI와 Spring 사이의 내부 연동 및 비전 처리 확장 지점
+- `raspberry-pi`: Raspberry Pi 장치 등록 코드
+- `docs`: 프론트엔드 API 가이드와 PostgreSQL 마이그레이션 문서
 
-## 폴더별 역할
-
-### 1. spring-server
-
-Spring Boot 기반의 메인 백엔드 서버입니다.
-
-주요 역할은 다음과 같습니다.
-
-* 회원가입 및 로그인
-* 사용자 권한 관리
-* 케이지 등록 및 조회
-* 반려동물 정보 등록 및 조회
-* 라즈베리파이 기기 등록 정보 관리
-* MAC 주소와 IP 주소 저장
-* 케이지와 기기 매칭
-* 케이지별 영상 스트리밍 URL 제공
-* 센서 로그 저장 및 조회
-
-프론트엔드는 기본적으로 Spring Boot 서버의 API를 호출합니다.
-
-예시:
-
-```http
-GET /api/cages/{cageId}/stream
-```
-
-응답 예시:
-
-```json
-{
-  "cageId": 1,
-  "streamUrl": "http://192.168.0.15:8001/video_feed"
-}
-```
-
-### 2. fastapi-stream-server
-
-Python/FastAPI 기반의 영상 스트리밍 및 AI 분석 서버입니다.
-
-주요 역할은 다음과 같습니다.
-
-* 라즈베리파이 카메라 영상 송출
-* 실시간 영상 스트리밍 처리
-* 센서 데이터 처리
-* YOLO 기반 행동 분석
-* AI 리포트 생성 기능 연동
-
-영상 처리와 AI 분석은 Python 환경이 더 적합하므로 Spring Boot 서버와 분리하여 관리합니다.
-
-### 3. raspberry-pi
-
-라즈베리파이에서 직접 실행하는 코드가 위치합니다.
-
-주요 역할은 다음과 같습니다.
-
-* 라즈베리파이의 IP 주소 확인
-* 라즈베리파이의 MAC 주소 확인
-* 서버로 기기 정보 전송
-* 센서 데이터 수집 및 전송
-* 카메라 실행 관련 코드 관리
-
-현재 `register_device.py`는 라즈베리파이의 IP/MAC 주소를 서버로 전송하여 기기 등록에 활용하는 코드입니다.
-
-### 4. docs
-
-프로젝트 문서가 위치합니다.
-
-작성 예정 문서는 다음과 같습니다.
-
-* API 명세서
-* DB 테이블 설계
-* 시스템 아키텍처
-* 라즈베리파이 연동 방법
-* 실행 방법 및 배포 방법
-
-## 전체 동작 흐름
+## 영상 처리 구조
 
 ```text
-1. 라즈베리파이가 자신의 IP/MAC 주소를 서버에 등록한다.
-2. Spring Boot 서버는 기기 정보를 DB에 저장하거나 갱신한다.
-3. 관리자는 케이지와 라즈베리파이 기기를 매칭한다.
-4. 사용자가 프론트에서 특정 케이지 화면을 클릭한다.
-5. 프론트는 Spring Boot 서버에 해당 케이지의 영상 URL을 요청한다.
-6. Spring Boot 서버는 연결된 라즈베리파이의 영상 스트리밍 주소를 반환한다.
-7. 프론트는 반환받은 영상 URL을 화면에 표시한다.
+Tapo C225 stream2 (저화질 RTSP)
+  -> Raspberry Pi / FastAPI
+  -> YOLO 행동 분석
+  -> Spring Boot 내부 이벤트 API
+  -> PostgreSQL (이벤트 메타데이터, 영상 URL)
+
+이상행동 발생 시
+  -> Raspberry Pi / FastAPI가 클립·썸네일 생성 및 GCS 업로드
+  -> videoUrl, thumbnailUrl만 Spring Boot로 전달
+
+사용자 실시간 보기 요청 시 (다음 단계)
+  -> Spring Boot 권한 확인
+  -> FastAPI/Pi에 송출 시작 요청
+  -> Tapo C225 stream1 (고화질 RTSP) -> MediaMTX
 ```
 
-## 개발 방향
+Raspberry Pi Camera Module 기반 MJPEG 스트림과 `/video/*` 프록시 API는 사용하지 않습니다.
 
-본 프로젝트는 다음과 같은 방식으로 개발을 진행합니다.
+## 현재 구현 범위
 
-* Spring Boot는 중앙 백엔드 서버 역할을 담당합니다.
-* FastAPI는 영상 스트리밍 및 AI 분석 기능을 담당합니다.
-* Raspberry Pi 코드는 실제 하드웨어에서 실행되는 코드로 분리합니다.
-* 프론트엔드는 Spring Boot API를 기준으로 데이터를 요청합니다.
-* 영상 스트리밍, 센서 데이터, AI 분석 결과는 필요에 따라 Spring Boot 서버와 연동합니다.
+- 케이지당 카메라 1대 등록 및 조회
+- FastAPI의 이상행동 이벤트 전달 API
+- `pet_logs`와 `pet_videos`를 이용한 이벤트·클립 메타데이터 저장
+- Spring에서 FastAPI 카메라 상태를 조회하는 목업/HTTP 어댑터
 
-## 기술 스택
+실제 RTSP 수신, YOLO 추론, GCS 업로드, MediaMTX 송출은 FastAPI/Raspberry Pi 비전 처리 단계에서 구현합니다.
 
-### Backend
+## 실행 전 준비
 
-* Java
-* Spring Boot
-* Spring Data JPA
-* PostgreSQL
+Spring Boot 실행 전 운영 PostgreSQL에 [마이그레이션 SQL](docs/sql/peztz_domain_migration.sql)을 적용해야 합니다.
 
-### Streaming / AI
+환경변수로 DB 연결 정보와 내부 API 키를 설정하세요. RTSP 주소·계정·비밀번호는 Spring 응답이나 저장소에 두지 않습니다.
 
-* Python
-* FastAPI
-* OpenCV
-* YOLO
-
-### Hardware
-
-* Raspberry Pi
-* Camera Module
-* Sensor Module
-
-## 현재 진행 상태
-
-* 라즈베리파이 IP/MAC 정보 전송 코드 추가
-* Spring Boot 서버 프로젝트 구조 추가
-* 백엔드 서버 구조 분리 예정
+프론트엔드 연동 내용은 [FRONTEND_API_GUIDE.md](docs/FRONTEND_API_GUIDE.md)를 참고하세요.

@@ -27,7 +27,6 @@ public class CageService {
 
 	private final CageRepository cageRepository;
 	private final FacilityService facilityService;
-	private final VideoUrlService videoUrlService;
 
 	@Transactional(readOnly = true)
 	public List<CageResponse> findAll() {
@@ -91,7 +90,6 @@ public class CageService {
 				cage.getCageNumber(),
 				cage.getStatus(),
 				cage.getRaspberryPiDeviceId(),
-				videoUrlService.buildVideoUrl(cage.getRaspberryPiDeviceId()),
 				cage.getCreatedAt());
 	}
 

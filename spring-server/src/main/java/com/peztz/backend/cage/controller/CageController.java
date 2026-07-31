@@ -35,7 +35,7 @@ public class CageController {
 
 	private final CageService cageService;
 
-	@Operation(summary = "전체 케이지 목록 조회", description = "라즈베리파이가 연결된 케이지는 videoUrl을 함께 반환합니다.",
+	@Operation(summary = "전체 케이지 목록 조회",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "조회 성공",
 							content = @Content(array = @ArraySchema(schema = @Schema(implementation = CageResponse.class))))
@@ -57,7 +57,7 @@ public class CageController {
 		return ResponseEntity.ok(cageService.findById(cageId));
 	}
 
-	@Operation(summary = "시설에 케이지 등록", description = "raspberryPiDeviceId를 지정하면 videoUrl이 생성됩니다.",
+	@Operation(summary = "시설에 케이지 등록",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "등록 성공",
 							content = @Content(schema = @Schema(implementation = CageResponse.class))),

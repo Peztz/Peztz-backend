@@ -163,11 +163,9 @@ GET    /api/owners/me/cages
 
 세션이 `ACTIVE` 상태이면 Cage에는 현재 사용자와 현재 반려동물이 연결됩니다. FastAPI가 보내는 이상행동 이벤트도 이 활성 세션을 기준으로 검증·저장됩니다.
 
-### 레거시 `videoUrl` 필드
+### 실시간 영상 보기
 
-기존 Cage·입실 세션 응답에는 `videoUrl`이 포함될 수 있습니다. 이는 이전 Raspberry Pi 카메라 모듈의 MJPEG 프록시 기능입니다.
-
-**새 Tapo 카메라 화면에서는 이 필드를 이용해 영상을 재생하지 마세요.** 새 구조의 실시간 보기 기능은 MediaMTX 기반으로 별도 구현될 예정입니다.
+기존 Raspberry Pi Camera Module 기반 MJPEG 프록시와 Cage·입실 세션 응답의 `videoUrl` 필드는 제거되었습니다. 새 Tapo 카메라의 실시간 영상 보기는 MediaMTX 기반 기능이 배포되기 전까지 화면에서 준비 중으로 표시하세요.
 
 ## 세션 로그·리포트 API
 

@@ -1,6 +1,5 @@
 package com.peztz.backend.admin;
 
-import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -261,7 +260,7 @@ class AdminCageAssignmentControllerTest {
 				.andExpect(jsonPath("$.cageNumber").value("B-2"))
 				.andExpect(jsonPath("$.status").value(CageService.STATUS_AVAILABLE))
 				.andExpect(jsonPath("$.raspberryPiDeviceId").value(newDevice.getDeviceId().toString()))
-				.andExpect(jsonPath("$.videoUrl", containsString(newDevice.getDeviceId().toString())));
+				.andExpect(jsonPath("$.videoUrl").doesNotExist());
 
 		mockMvc.perform(get("/api/facilities/{facilityId}/cages", facility.getId()))
 				.andExpect(status().isOk())
@@ -295,7 +294,7 @@ class AdminCageAssignmentControllerTest {
 								"cageId", cage.getId()))))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.videoUrl", containsString(newDevice.getDeviceId().toString())))
+				.andExpect(jsonPath("$.videoUrl").doesNotExist())
 				.andReturn();
 		JsonNode admission = objectMapper.readTree(admissionResult.getResponse().getContentAsString());
 
@@ -303,7 +302,7 @@ class AdminCageAssignmentControllerTest {
 						.header("Authorization", "Bearer " + OWNER_TOKEN))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].cageId").value(cage.getId().toString()))
-				.andExpect(jsonPath("$[0].videoUrl", containsString(newDevice.getDeviceId().toString())));
+				.andExpect(jsonPath("$[0].videoUrl").doesNotExist());
 
 		mockMvc.perform(patch("/api/admission-sessions/{sessionId}/end", admission.get("sessionId").asLong())
 						.header("Authorization", "Bearer " + OWNER_TOKEN))
@@ -444,7 +443,7 @@ class AdminCageAssignmentControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[0].cageId").value(cage.getId().toString()))
 				.andExpect(jsonPath("$[0].facilityName").value("New Hospital"))
-				.andExpect(jsonPath("$[0].videoUrl", containsString(newDevice.getDeviceId().toString())));
+				.andExpect(jsonPath("$[0].videoUrl").doesNotExist());
 	}
 
 	@Test
