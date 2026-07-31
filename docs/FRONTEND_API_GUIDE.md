@@ -286,6 +286,12 @@ GET /api/pet-events/my?petId={petId}
 GET /api/pet-events/{eventId}
 ```
 
+`eventType`은 `pet_logs.log_type`에 실제 행동 분류값으로 저장됩니다. 예를 들어
+`EXCESSIVE_BARKING`, `FALL`, `VOMITING` 같은 값입니다. `externalEventId`는 행동
+분류가 아니라 감지 장치가 생성한 이벤트 고유번호이며, 동일 이벤트가 재전송될 때
+중복 저장을 막는 용도로 사용됩니다. 신뢰도와 추가 분석 정보는 `pet_logs.data`에
+JSON으로 저장됩니다.
+
 - `eventId`는 UUID가 아닌 숫자형 ID입니다.
 - 목록과 상세는 로그인한 보호자가 소유한 반려동물의 이벤트만 반환합니다.
 - `404`는 이벤트가 없거나 다른 사용자의 이벤트에 접근한 경우에 반환될 수 있습니다.

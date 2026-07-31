@@ -1,5 +1,6 @@
 package com.peztz.backend.camera;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -199,6 +200,10 @@ class CameraPetEventControllerTest {
 				.andReturn();
 		JsonNode event = objectMapper.readTree(eventResult.getResponse().getContentAsString());
 		long eventId = event.get("eventId").asLong();
+		assertThat(jdbcTemplate.queryForObject(
+				"select log_type from public.pet_logs where log_id = ?",
+				String.class,
+				eventId)).isEqualTo("EXCESSIVE_BARKING");
 
 		mockMvc.perform(post("/api/internal/pet-events")
 					.header("X-Internal-Api-Key", "test-internal-key")
@@ -206,6 +211,11 @@ class CameraPetEventControllerTest {
 					.content(eventBody))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.eventId").value(eventId));
+
+		jdbcTemplate.update(
+				"insert into public.pet_logs(session_id, log_type, data, created_at) values (?, ?, '{}', current_timestamp)",
+				session.getId(),
+				"TEMPERATURE");
 
 		mockMvc.perform(get("/api/pet-events/my")
 					.header("Authorization", "Bearer " + OWNER_TOKEN))

@@ -34,12 +34,38 @@ public interface SessionLogRepository extends JpaRepository<SessionLog, Long> {
 
 	Optional<SessionLog> findByExternalEventId(String externalEventId);
 
-	List<SessionLog> findByTypeAndSessionPetOwnerIdOrderByCreatedAtDesc(String type, UUID ownerId);
+	@Query("""
+			select log
+			from SessionLog log
+			where log.camera is not null
+			  and log.externalEventId is not null
+			  and log.session.pet.owner.id = :ownerId
+			order by log.createdAt desc
+			""")
+	List<SessionLog> findCameraEventsByOwnerId(@Param("ownerId") UUID ownerId);
 
-	List<SessionLog> findByTypeAndSessionPetIdAndSessionPetOwnerIdOrderByCreatedAtDesc(
-			String type,
-			UUID petId,
-			UUID ownerId);
+	@Query("""
+			select log
+			from SessionLog log
+			where log.camera is not null
+			  and log.externalEventId is not null
+			  and log.session.pet.id = :petId
+			  and log.session.pet.owner.id = :ownerId
+			order by log.createdAt desc
+			""")
+	List<SessionLog> findCameraEventsByPetIdAndOwnerId(
+			@Param("petId") UUID petId,
+			@Param("ownerId") UUID ownerId);
 
-	Optional<SessionLog> findByIdAndTypeAndSessionPetOwnerId(Long id, String type, UUID ownerId);
+	@Query("""
+			select log
+			from SessionLog log
+			where log.id = :id
+			  and log.camera is not null
+			  and log.externalEventId is not null
+			  and log.session.pet.owner.id = :ownerId
+			""")
+	Optional<SessionLog> findCameraEventByIdAndOwnerId(
+			@Param("id") Long id,
+			@Param("ownerId") UUID ownerId);
 }

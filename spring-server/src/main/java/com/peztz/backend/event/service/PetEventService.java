@@ -5,6 +5,7 @@ import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
@@ -36,7 +37,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class PetEventService {
 
-	public static final String AI_EVENT_TYPE = "AI_EVENT";
+	private static final String LEGACY_AI_EVENT_TYPE = "AI_EVENT";
 
 	private final SessionLogRepository sessionLogRepository;
 	private final SessionVideoRepository sessionVideoRepository;
@@ -48,9 +49,10 @@ public class PetEventService {
 	@Transactional
 	public PetEventResponse createFromFastApi(PetEventCreateRequest request) {
 		String externalEventId = request.externalEventId().trim();
+		String eventType = request.eventType().trim().toUpperCase(Locale.ROOT);
 		return sessionLogRepository.findByExternalEventId(externalEventId)
 				.map(this::toResponse)
-				.orElseGet(() -> createNewEvent(request, externalEventId));
+				.orElseGet(() -> createNewEvent(request, externalEventId, eventType));
 	}
 
 	@Transactional(readOnly = true)
@@ -58,12 +60,11 @@ public class PetEventService {
 		AppUser owner = authService.requireUser(authorization);
 		List<SessionLog> events;
 		if (petId == null) {
-			events = sessionLogRepository.findByTypeAndSessionPetOwnerIdOrderByCreatedAtDesc(AI_EVENT_TYPE, owner.getId());
+			events = sessionLogRepository.findCameraEventsByOwnerId(owner.getId());
 		} else {
 			petRepository.findByIdAndOwnerId(petId, owner.getId())
 					.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found"));
-			events = sessionLogRepository.findByTypeAndSessionPetIdAndSessionPetOwnerIdOrderByCreatedAtDesc(
-					AI_EVENT_TYPE, petId, owner.getId());
+			events = sessionLogRepository.findCameraEventsByPetIdAndOwnerId(petId, owner.getId());
 		}
 		return events.stream().map(this::toResponse).toList();
 	}
@@ -71,12 +72,13 @@ public class PetEventService {
 	@Transactional(readOnly = true)
 	public PetEventResponse findMineById(String authorization, Long eventId) {
 		AppUser owner = authService.requireUser(authorization);
-		SessionLog event = sessionLogRepository.findByIdAndTypeAndSessionPetOwnerId(eventId, AI_EVENT_TYPE, owner.getId())
+		SessionLog event = sessionLogRepository.findCameraEventByIdAndOwnerId(eventId, owner.getId())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet event not found"));
 		return toResponse(event);
 	}
 
-	private PetEventResponse createNewEvent(PetEventCreateRequest request, String externalEventId) {
+	private PetEventResponse createNewEvent(
+			PetEventCreateRequest request, String externalEventId, String eventType) {
 		Pet pet = petRepository.findById(request.petId())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found"));
 		Camera camera = cameraService.getCamera(request.cameraId());
@@ -100,7 +102,7 @@ public class PetEventService {
 				.videoId(video == null ? null : video.getId())
 				.camera(camera)
 				.externalEventId(externalEventId)
-				.type(AI_EVENT_TYPE)
+				.type(eventType)
 				.data(eventData(request))
 				.createdAt(request.occurredAt())
 				.eventEndedAt(eventEndedAt)
@@ -161,7 +163,6 @@ public class PetEventService {
 
 	private Map<String, Object> eventData(PetEventCreateRequest request) {
 		Map<String, Object> data = new LinkedHashMap<>();
-		data.put("eventType", request.eventType().trim().toUpperCase());
 		data.put("confidence", request.confidence());
 		data.put("metadata", request.metadata() == null ? new HashMap<>() : new HashMap<>(request.metadata()));
 		return data;
@@ -180,7 +181,7 @@ public class PetEventService {
 				event.getSession().getPet().getName(),
 				event.getCamera().getId(),
 				event.getCamera().getName(),
-				stringValue(event.getData().get("eventType")),
+				eventType(event),
 				numberValue(event.getData().get("confidence")),
 				event.getEventEndedAt(),
 				event.getEventDurationSeconds(),
@@ -191,6 +192,13 @@ public class PetEventService {
 				video == null ? null : video.getThumbnailPath(),
 				metadataValue(event.getData().get("metadata")),
 				event.getCreatedAt());
+	}
+
+	private String eventType(SessionLog event) {
+		if (LEGACY_AI_EVENT_TYPE.equals(event.getType())) {
+			return stringValue(event.getData().get("eventType"));
+		}
+		return event.getType();
 	}
 
 	private String stringValue(Object value) {
