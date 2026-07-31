@@ -15,3 +15,4 @@ __pycache__/
 .gradle/
 .gradle-local/
 build/
+infra/mediamtx/mediamtx.yml

@@ -4,6 +4,7 @@ import json
 import logging
 import os
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -27,6 +28,12 @@ SPRING_INTERNAL_API_KEY = os.getenv("SPRING_INTERNAL_API_KEY", "")
 DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
 FASTAPI_INTERNAL_API_KEY = os.getenv("FASTAPI_INTERNAL_API_KEY", "")
 MEDIAMTX_PLAYBACK_BASE_URL = os.getenv("MEDIAMTX_PLAYBACK_BASE_URL", "").rstrip("/")
+MEDIAMTX_API_BASE_URL = os.getenv("MEDIAMTX_API_BASE_URL", "http://127.0.0.1:9997").rstrip("/")
+MEDIAMTX_STREAM_PATH = os.getenv("MEDIAMTX_STREAM_PATH", "").strip("/")
+MEDIAMTX_STREAM_PATH_TEMPLATE = os.getenv(
+    "MEDIAMTX_STREAM_PATH_TEMPLATE",
+    "camera-{camera_id}",
+).strip("/")
 
 app = FastAPI(title="Peztz FastAPI Device Integration")
 
@@ -197,15 +204,72 @@ async def forward_pet_event(
     )
 
 
-camera_runtime_statuses: dict[str, str] = {}
+def _camera_stream_path(camera_id: str) -> str:
+    if MEDIAMTX_STREAM_PATH:
+        return MEDIAMTX_STREAM_PATH
+    try:
+        stream_path = MEDIAMTX_STREAM_PATH_TEMPLATE.format(camera_id=camera_id).strip("/")
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="MediaMTX stream path template is invalid",
+        ) from exc
+    if not stream_path:
+        raise HTTPException(status_code=503, detail="MediaMTX stream path is not configured")
+    return stream_path
 
 
-def _camera_runtime_response(camera_id: str) -> dict[str, Any]:
+async def _mediamtx_path_is_online(stream_path: str) -> bool:
+    if not MEDIAMTX_API_BASE_URL:
+        raise HTTPException(status_code=503, detail="MediaMTX API base URL is not configured")
+
+    path_url = f"{MEDIAMTX_API_BASE_URL}/v3/paths/get/{quote(stream_path, safe='')}"
+    timeout = httpx.Timeout(5.0, connect=2.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(path_url)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=502, detail="MediaMTX API timeout") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="MediaMTX API request failed") from exc
+
+    if response.status_code == 404:
+        return False
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail=f"MediaMTX API returned status {response.status_code}",
+        )
+
+    try:
+        path_status = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="MediaMTX API returned invalid JSON") from exc
+    if not isinstance(path_status, dict):
+        raise HTTPException(status_code=502, detail="MediaMTX API returned an invalid response")
+
+    return path_status.get("ready") is True
+
+
+async def _camera_runtime_response(camera_id: str) -> dict[str, Any]:
+    stream_path = _camera_stream_path(camera_id)
+    is_online = await _mediamtx_path_is_online(stream_path)
+    playback_url = None
+    if is_online and MEDIAMTX_PLAYBACK_BASE_URL:
+        playback_url = f"{MEDIAMTX_PLAYBACK_BASE_URL}/{quote(stream_path, safe='')}/"
+
+    if not is_online:
+        message = "Raspberry Pi is not publishing this camera stream"
+    elif playback_url is None:
+        message = "Camera stream is online, but the playback base URL is not configured"
+    else:
+        message = "Camera stream is online"
+
     return {
         "cameraId": camera_id,
-        "status": camera_runtime_statuses.get(camera_id, "IDLE"),
-        "playbackUrl": None,
-        "message": "Camera control skeleton only; no RTSP or MediaMTX process was started",
+        "status": "ONLINE" if is_online else "IDLE",
+        "playbackUrl": playback_url,
+        "message": message,
     }
 
 
@@ -215,27 +279,31 @@ async def camera_runtime_status(
     x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
 ) -> dict[str, Any]:
     _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
-    return _camera_runtime_response(camera_id)
+    return await _camera_runtime_response(camera_id)
 
 
 @app.post("/internal/cameras/{camera_id}/live/start")
-async def start_camera_live_skeleton(
+async def start_camera_live_stream(
     camera_id: str,
     x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
 ) -> dict[str, Any]:
     _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
-    camera_runtime_statuses[camera_id] = "NOT_IMPLEMENTED"
-    return _camera_runtime_response(camera_id)
+    raise HTTPException(
+        status_code=409,
+        detail="Live stream is managed by the Raspberry Pi systemd service",
+    )
 
 
 @app.post("/internal/cameras/{camera_id}/live/stop")
-async def stop_camera_live_skeleton(
+async def stop_camera_live_stream(
     camera_id: str,
     x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
 ) -> dict[str, Any]:
     _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
-    camera_runtime_statuses[camera_id] = "IDLE"
-    return _camera_runtime_response(camera_id)
+    raise HTTPException(
+        status_code=409,
+        detail="Live stream is managed by the Raspberry Pi systemd service",
+    )
 
 # 여기서는 llm 
 DB_USER = os.getenv("DB_USER")

@@ -265,14 +265,14 @@ GET /api/cameras/{cameraId}/runtime-status
 Authorization: Bearer {accessToken}
 ```
 
-현재는 FastAPI 송출 제어가 배포되기 전이므로 개발용 Mock 상태를 반환합니다. `playbackUrl`이 `null`이어도 정상이며, 이를 실제 실시간 재생 URL로 사용하면 안 됩니다.
+로컬 개발의 기본 설정은 Mock 상태를 반환합니다. GCP에서 `FASTAPI_CLIENT_MODE=http`으로 배포하면 FastAPI가 MediaMTX Control API를 조회하여 실제 상태와 재생 URL을 반환합니다. 라즈베리파이가 송출하지 않거나 오프라인이면 `playbackUrl`은 `null`입니다.
 
 ```json
 {
   "cameraId": "c4eebef5-98f0-41b4-b6e0-bc7e0dc1f97e",
-  "status": "IDLE",
-  "playbackUrl": null,
-  "message": "Mock adapter only; no RTSP or MediaMTX process was started"
+  "status": "ONLINE",
+  "playbackUrl": "http://34.50.7.78:8889/cage-a1/",
+  "message": "Camera stream is online"
 }
 ```
 
