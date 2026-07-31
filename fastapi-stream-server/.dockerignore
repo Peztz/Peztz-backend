@@ -1,0 +1,11 @@
+.env
+venv
+.venv
+__pycache__
+.pytest_cache
+*.pyc
+*.pyo
+*.log
+README.md
+requirements-dev.txt
+test_main.py
