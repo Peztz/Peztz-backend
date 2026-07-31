@@ -8,6 +8,7 @@ import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.HttpEntity;
@@ -27,6 +28,7 @@ import com.peztz.backend.pet.repository.PetRepository;
 import com.peztz.backend.report.dto.DailyReportResponse;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 
 @Service
 @RequiredArgsConstructor
@@ -36,8 +38,11 @@ public class DailyReportService {
     private final PetRepository petRepository;
     private final AuthService authService;
     private final AdmissionSessionService admissionSessionService;
-    
-    // 🎯 준님의 8500번 FastAPI AI 엔진을 찌르기 위한 RestTemplate 선언
+
+
+    @Value("${peztz.fastapi.base-url:http://localhost:8000}")
+    private String fastApiBaseUrl;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Transactional(readOnly = true)
@@ -90,13 +95,13 @@ public class DailyReportService {
                 .orElse(null);
 
         // ==================== 🎯 여기서부터 준님의 AI 리포트 연동 파트 ====================
-        
-        String fastapiUrl = "http://localhost:8500/api/report/generate";
-        
+
+        String fastapiUrl = fastApiBaseUrl.replaceAll("/+$", "") + "/api/report/generate";
+
         // 준님의 FastAPI 규격 {"cage_id": ..., "pet_name": ...} 맵핑
         Map<String, Object> requestMap = new HashMap<>();
         // 시연을 위해 준님이 SQL 더미에 하드코딩해둔 초코의 cage_id를 박아 통신을 성공시킵니다!
-        requestMap.put("cage_id", "55555555-5555-5555-5555-555555555555"); 
+        requestMap.put("cage_id", "55555555-5555-5555-5555-555555555555");
         requestMap.put("pet_name", "초코");
 
         HttpHeaders headers = new HttpHeaders();
@@ -105,7 +110,6 @@ public class DailyReportService {
 
         String aiReportSummary = "";
         try {
-            // 구글 클라우드 내부망 통신으로 8500 포트의 FastAPI 파이썬 코드를 찌릅니다.
             ResponseEntity<Map> response = restTemplate.postForEntity(fastapiUrl, entity, Map.class);
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 // FastAPI 리턴값 구조인 {"report": "제미나이 텍스트 내용..."} 에서 report 추출
@@ -114,7 +118,7 @@ public class DailyReportService {
         } catch (Exception e) {
             e.printStackTrace();
             // 에러 날 경우 예외 처리 및 가짜 텍스트 노출 방지 기본값 세팅
-            aiReportSummary = "## 🐾 AI 건강 리포트 생성 실패\n현재 AI 분석 서버(8500)와의 통신이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
+            aiReportSummary = "## 🐾 AI 건강 리포트 생성 실패\n현재 AI 분석 서버와의 통신이 원활하지 않습니다. 잠시 후 다시 시도해 주세요.";
         }
 
         // 팀원들이 짜놓은 수식에 준님이 가져온 aiReportSummary를 섞어주거나 통째로 대체합니다!
