@@ -26,6 +26,8 @@ public interface AdmissionSessionRepository extends JpaRepository<AdmissionSessi
 
 	boolean existsByCageIdAndStatus(UUID cageId, String status);
 
+	Optional<AdmissionSession> findFirstByCageIdAndStatusOrderByCreatedAtDesc(UUID cageId, String status);
+
 	@Query("""
 			select session
 			from AdmissionSession session

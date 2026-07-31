@@ -1,6 +1,7 @@
 package com.peztz.backend.cage.repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,4 +15,6 @@ public interface CageRepository extends JpaRepository<Cage, UUID> {
 	List<Cage> findAllByFacilityIdOrderByIdAsc(UUID facilityId);
 
 	boolean existsByIdAndFacilityId(UUID id, UUID facilityId);
+
+	Optional<Cage> findByIdAndUserId(UUID id, UUID userId);
 }

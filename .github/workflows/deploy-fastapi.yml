@@ -19,6 +19,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run FastAPI tests
+        run: |
+          python -m pip install -r fastapi-stream-server/requirements-dev.txt
+          cd fastapi-stream-server
+          python -m pytest -q
+
       - name: Prepare SSH key
         run: |
           mkdir -p ~/.ssh

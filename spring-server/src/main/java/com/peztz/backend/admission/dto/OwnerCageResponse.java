@@ -16,8 +16,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		  "cageId": "d69fc7ff-481c-4305-b81c-551955a1ce23",
 		  "cageName": "A-1 Cage",
 		  "facilityName": "Peztz Busan",
-		  "status": "OCCUPIED",
-		  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890"
+		  "status": "OCCUPIED"
 		}
 		""")
 public record OwnerCageResponse(
@@ -49,8 +48,5 @@ public record OwnerCageResponse(
 		String facilityName,
 
 		@Schema(description = "Cage status", example = "OCCUPIED")
-		String status,
-
-		@Schema(description = "FastAPI video proxy URL", example = "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890")
-		String videoUrl) {
+		String status) {
 }

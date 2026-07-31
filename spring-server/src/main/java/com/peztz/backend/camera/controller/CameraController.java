@@ -1,0 +1,77 @@
+package com.peztz.backend.camera.controller;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.peztz.backend.camera.dto.CameraRequest;
+import com.peztz.backend.camera.dto.CameraResponse;
+import com.peztz.backend.camera.dto.CameraUpdateRequest;
+import com.peztz.backend.camera.service.CameraService;
+import com.peztz.backend.integration.fastapi.CameraRuntimeStatusResponse;
+import com.peztz.backend.integration.fastapi.FastApiCameraClient;
+
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+
+@RestController
+@RequestMapping("/api/cameras")
+@RequiredArgsConstructor
+@Tag(name = "Camera", description = "Owner camera management APIs")
+public class CameraController {
+
+	private final CameraService cameraService;
+	private final FastApiCameraClient fastApiCameraClient;
+
+	@Operation(summary = "Register camera")
+	@PostMapping
+	public ResponseEntity<CameraResponse> create(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@Valid @RequestBody CameraRequest request) {
+		return ResponseEntity.ok(cameraService.create(authorization, request));
+	}
+
+	@Operation(summary = "List my cameras")
+	@GetMapping("/my")
+	public ResponseEntity<List<CameraResponse>> findMine(
+			@RequestHeader(value = "Authorization", required = false) String authorization) {
+		return ResponseEntity.ok(cameraService.findMine(authorization));
+	}
+
+	@Operation(summary = "Get my camera")
+	@GetMapping("/{cameraId}")
+	public ResponseEntity<CameraResponse> findById(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID cameraId) {
+		return ResponseEntity.ok(cameraService.findMineById(authorization, cameraId));
+	}
+
+	@Operation(summary = "Update my camera")
+	@PutMapping("/{cameraId}")
+	public ResponseEntity<CameraResponse> update(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID cameraId,
+			@Valid @RequestBody CameraUpdateRequest request) {
+		return ResponseEntity.ok(cameraService.update(authorization, cameraId, request));
+	}
+
+	@Operation(summary = "Get camera runtime status", description = "Returns mock status until FastAPI HTTP mode is enabled.")
+	@GetMapping("/{cameraId}/runtime-status")
+	public ResponseEntity<CameraRuntimeStatusResponse> getRuntimeStatus(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID cameraId) {
+		cameraService.getOwnedCamera(authorization, cameraId);
+		return ResponseEntity.ok(fastApiCameraClient.getStatus(cameraId));
+	}
+}

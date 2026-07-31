@@ -1,0 +1,50 @@
+logLevel: info
+
+api: true
+apiAddress: :9997
+
+rtsp: true
+rtspAddress: :8554
+rtspTransports: [tcp]
+
+hls: true
+hlsAddress: :8888
+
+webrtc: true
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+webrtcAdditionalHosts: [GCP_PUBLIC_IP_OR_STREAM_DOMAIN]
+webrtcAllowOrigins: ["*"]
+
+authMethod: internal
+authInternalUsers:
+  - user: CHANGE_ME_PUBLISH_USER
+    pass: CHANGE_ME_PUBLISH_PASSWORD
+    ips: []
+    permissions:
+      - action: publish
+        path: cage-a1
+
+  # Temporary test access. Replace anonymous playback before production use.
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path: cage-a1
+      - action: playback
+        path: cage-a1
+
+  - user: any
+    pass:
+    # Port 9997 is bound to host loopback by docker-compose.yml.
+    ips: []
+    permissions:
+      - action: api
+      - action: metrics
+      - action: pprof
+
+paths:
+  cage-a1:
+    source: publisher
+    record: false

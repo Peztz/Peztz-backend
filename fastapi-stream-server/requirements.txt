@@ -1,3 +1,6 @@
 fastapi
 uvicorn
 httpx
+asyncpg
+google-genai
+python-dotenv

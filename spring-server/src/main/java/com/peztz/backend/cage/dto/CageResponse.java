@@ -13,7 +13,6 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		  "cageNumber": "A-1",
 		  "status": "AVAILABLE",
 		  "raspberryPiDeviceId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
-		  "videoUrl": "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890",
 		  "createdAt": "2026-06-08T12:00:00"
 		}
 		""")
@@ -35,9 +34,6 @@ public record CageResponse(
 
 		@Schema(description = "Connected Raspberry Pi device ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 		UUID raspberryPiDeviceId,
-
-		@Schema(description = "FastAPI video proxy URL", example = "http://34.50.7.78:8000/video/7bf2b0d2-dd67-4002-929a-d4505f6af890")
-		String videoUrl,
 
 		@Schema(description = "Created date time", example = "2026-06-08T12:00:00")
 		LocalDateTime createdAt) {

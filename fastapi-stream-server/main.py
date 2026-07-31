@@ -1,42 +1,47 @@
+import asyncio
+import hmac
+import json
+import logging
 import os
 from typing import Any
+from urllib.parse import quote
 
-import json
 import httpx
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import Response
 # 여기서 부터는 LLM 코드 
 import asyncpg
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
-import os
 
 # .env 파일 로드 (GEMINI_API_KEY 환경변수를 불러옵니다)
 load_dotenv()
 
-# 제미나이 클라이언트 초기화 (위의 httpx client와 겹치지 않게 이름을 분리했습니다)
-gemini_client = genai.Client()
+logger = logging.getLogger(__name__)
 
 
-DEFAULT_SPRING_BOOT_BASE_URL = "http://34.50.7.78:8080"
-SPRING_BOOT_BASE_URL = os.getenv(
-    "SPRING_BOOT_BASE_URL",
-    DEFAULT_SPRING_BOOT_BASE_URL,
-).rstrip("/")
+SPRING_BOOT_BASE_URL = os.getenv("SPRING_BOOT_BASE_URL", "").rstrip("/")
+SPRING_INTERNAL_API_KEY = os.getenv("SPRING_INTERNAL_API_KEY", "")
+DEVICE_API_KEY = os.getenv("DEVICE_API_KEY", "")
+FASTAPI_INTERNAL_API_KEY = os.getenv("FASTAPI_INTERNAL_API_KEY", "")
+MEDIAMTX_PLAYBACK_BASE_URL = os.getenv("MEDIAMTX_PLAYBACK_BASE_URL", "").rstrip("/")
+MEDIAMTX_API_BASE_URL = os.getenv("MEDIAMTX_API_BASE_URL", "http://127.0.0.1:9997").rstrip("/")
+MEDIAMTX_STREAM_PATH = os.getenv("MEDIAMTX_STREAM_PATH", "").strip("/")
+MEDIAMTX_STREAM_PATH_TEMPLATE = os.getenv(
+    "MEDIAMTX_STREAM_PATH_TEMPLATE",
+    "camera-{camera_id}",
+).strip("/")
 
-MJPEG_MEDIA_TYPE = "multipart/x-mixed-replace; boundary=frame"
-
-app = FastAPI(title="Peztz FastAPI Video Proxy")
+app = FastAPI(title="Peztz FastAPI Device Integration")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
-        "http://34.50.7.78:8080",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -54,8 +59,8 @@ async def root() -> dict[str, Any]:
             "GET /health",
             "POST /register",
             "POST /device/{cage_id}/sensor",
-            "GET /video/{device_id}",
-            "GET /video/by-mac?macAddress=...",
+            "POST /device/events",
+            "GET /internal/cameras/{camera_id}/status",
         ],
     }
 
@@ -66,12 +71,21 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/register")
-async def register(request: Request) -> Response:
+async def register(
+    request: Request,
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+) -> Response:
+    _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
     return await _proxy_post_to_spring("/api/raspberrypis/register", request)
 
 
 @app.post("/device/{cage_id}/sensor")
-async def receive_sensor(cage_id: int, request: Request) -> dict[str, Any]:
+async def receive_sensor(
+    cage_id: int,
+    request: Request,
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
     payload = await _read_json_payload(request)
     return {
         "status": "ok",
@@ -80,93 +94,10 @@ async def receive_sensor(cage_id: int, request: Request) -> dict[str, Any]:
     }
 
 
-@app.head("/video/by-mac")
-async def video_by_mac_head(
-    macAddress: str = Query(..., min_length=1),
-) -> Response:
-    stream_url = await _get_stream_url_from_spring(
-        "/api/raspberrypis/stream-url",
-        params={"macAddress": macAddress},
-    )
-    return await _check_mjpeg_stream(stream_url)
-
-
-@app.get("/video/by-mac")
-async def video_by_mac(
-    macAddress: str = Query(..., min_length=1),
-) -> StreamingResponse:
-    stream_url = await _get_stream_url_from_spring(
-        "/api/raspberrypis/stream-url",
-        params={"macAddress": macAddress},
-    )
-    return await _proxy_mjpeg_stream(stream_url)
-
-
-@app.head("/video/{device_id}")
-async def video_by_device_id_head(device_id: str) -> Response:
-    stream_url = await _get_stream_url_from_spring(
-        f"/api/raspberrypis/{device_id}/stream-url",
-    )
-    return await _check_mjpeg_stream(stream_url)
-
-
-@app.get("/video/{device_id}")
-async def video_by_device_id(device_id: str) -> StreamingResponse:
-    stream_url = await _get_stream_url_from_spring(
-        f"/api/raspberrypis/{device_id}/stream-url",
-    )
-    return await _proxy_mjpeg_stream(stream_url)
-
-
-async def _get_stream_url_from_spring(
-    path: str,
-    params: dict[str, str] | None = None,
-) -> str:
-    url = f"{SPRING_BOOT_BASE_URL}{path}"
-    timeout = httpx.Timeout(10.0, connect=5.0)
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(url, params=params)
-    except httpx.TimeoutException as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API timeout",
-        ) from exc
-    except httpx.RequestError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API request failed",
-        ) from exc
-
-    if response.status_code == 404:
-        raise HTTPException(status_code=404, detail="Raspberry Pi device not found")
-
-    if response.status_code >= 400:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API returned an error",
-        )
-
-    try:
-        data: dict[str, Any] = response.json()
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Spring Boot streamUrl API returned invalid JSON",
-        ) from exc
-
-    stream_url = data.get("streamUrl")
-    if not isinstance(stream_url, str) or not stream_url.strip():
-        raise HTTPException(status_code=400, detail="streamUrl is missing")
-
-    return stream_url.strip()
-
-
 async def _proxy_post_to_spring(path: str, request: Request) -> Response:
-    url = f"{SPRING_BOOT_BASE_URL}{path}"
+    url = _spring_boot_url(path)
     body = await request.body()
-    headers = {}
+    headers = _spring_internal_headers()
 
     content_type = request.headers.get("content-type")
     if content_type:
@@ -203,89 +134,206 @@ async def _read_json_payload(request: Request) -> Any:
         return body.decode("utf-8", errors="replace") if body else None
 
 
-async def _proxy_mjpeg_stream(stream_url: str) -> StreamingResponse:
-    client, stream_context, upstream_response = await _open_mjpeg_upstream(stream_url)
-
-    async def stream_chunks():
-        try:
-            async for chunk in upstream_response.aiter_bytes():
-                if chunk:
-                    yield chunk
-        finally:
-            await stream_context.__aexit__(None, None, None)
-            await client.aclose()
-
-    return StreamingResponse(
-        stream_chunks(),
-        media_type=MJPEG_MEDIA_TYPE,
-        headers=_stream_headers(),
-    )
+def _spring_internal_headers() -> dict[str, str]:
+    if not SPRING_INTERNAL_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Spring internal API key is not configured",
+        )
+    return {"X-Internal-Api-Key": SPRING_INTERNAL_API_KEY}
 
 
-async def _check_mjpeg_stream(stream_url: str) -> Response:
-    client, stream_context, _ = await _open_mjpeg_upstream(stream_url)
-    await stream_context.__aexit__(None, None, None)
-    await client.aclose()
+def _spring_boot_url(path: str) -> str:
+    if not SPRING_BOOT_BASE_URL:
+        raise HTTPException(status_code=503, detail="Spring Boot base URL is not configured")
+    return f"{SPRING_BOOT_BASE_URL}{path}"
+
+
+def _require_api_key(
+    provided_api_key: str | None,
+    configured_api_key: str,
+    key_name: str,
+) -> None:
+    if not configured_api_key:
+        raise HTTPException(status_code=503, detail=f"{key_name} is not configured")
+    if not provided_api_key or not hmac.compare_digest(provided_api_key, configured_api_key):
+        raise HTTPException(status_code=401, detail=f"Invalid {key_name.lower()}")
+
+
+class PetEventResult(BaseModel):
+    externalEventId: str
+    petId: str
+    cameraId: str
+    eventType: str
+    confidence: float
+    occurredAt: str
+    eventEndedAt: str | None = None
+    eventDurationSeconds: int | None = None
+    clipStartAt: str | None = None
+    clipEndAt: str | None = None
+    clipDurationSeconds: int | None = None
+    videoUrl: str | None = None
+    thumbnailUrl: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+@app.post("/device/events")
+async def forward_pet_event(
+    event: PetEventResult,
+    x_device_api_key: str | None = Header(default=None, alias="X-Device-Api-Key"),
+) -> Response:
+    _require_api_key(x_device_api_key, DEVICE_API_KEY, "Device API key")
+    url = _spring_boot_url("/api/internal/pet-events")
+    timeout = httpx.Timeout(10.0, connect=5.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                url,
+                json=event.model_dump(),
+                headers=_spring_internal_headers(),
+            )
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=502, detail="Spring event API timeout") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="Spring event API request failed") from exc
 
     return Response(
-        media_type=MJPEG_MEDIA_TYPE,
-        headers=_stream_headers(),
+        content=response.content,
+        status_code=response.status_code,
+        media_type=response.headers.get("content-type", "application/json"),
     )
 
 
-async def _open_mjpeg_upstream(stream_url: str):
-    timeout = httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0)
-    client = httpx.AsyncClient(timeout=timeout, follow_redirects=True)
-    stream_context = client.stream("GET", stream_url)
-
+def _camera_stream_path(camera_id: str) -> str:
+    if MEDIAMTX_STREAM_PATH:
+        return MEDIAMTX_STREAM_PATH
     try:
-        upstream_response = await stream_context.__aenter__()
-    except httpx.TimeoutException as exc:
-        await client.aclose()
+        stream_path = MEDIAMTX_STREAM_PATH_TEMPLATE.format(camera_id=camera_id).strip("/")
+    except (KeyError, ValueError) as exc:
         raise HTTPException(
-            status_code=502,
-            detail="Raspberry Pi stream server timeout",
+            status_code=503,
+            detail="MediaMTX stream path template is invalid",
         ) from exc
-    except httpx.RequestError as exc:
-        await client.aclose()
-        raise HTTPException(
-            status_code=502,
-            detail="Raspberry Pi stream server request failed",
-        ) from exc
+    if not stream_path:
+        raise HTTPException(status_code=503, detail="MediaMTX stream path is not configured")
+    return stream_path
 
-    if upstream_response.status_code >= 400:
-        await stream_context.__aexit__(None, None, None)
-        await client.aclose()
+
+async def _mediamtx_path_is_online(stream_path: str) -> bool:
+    if not MEDIAMTX_API_BASE_URL:
+        raise HTTPException(status_code=503, detail="MediaMTX API base URL is not configured")
+
+    path_url = f"{MEDIAMTX_API_BASE_URL}/v3/paths/get/{quote(stream_path, safe='')}"
+    timeout = httpx.Timeout(5.0, connect=2.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.get(path_url)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=502, detail="MediaMTX API timeout") from exc
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=502, detail="MediaMTX API request failed") from exc
+
+    if response.status_code == 404:
+        return False
+    if response.status_code >= 400:
         raise HTTPException(
             status_code=502,
-            detail="Raspberry Pi stream server returned an error",
+            detail=f"MediaMTX API returned status {response.status_code}",
         )
 
-    return client, stream_context, upstream_response
+    try:
+        path_status = response.json()
+    except ValueError as exc:
+        raise HTTPException(status_code=502, detail="MediaMTX API returned invalid JSON") from exc
+    if not isinstance(path_status, dict):
+        raise HTTPException(status_code=502, detail="MediaMTX API returned an invalid response")
+
+    return path_status.get("ready") is True
 
 
-def _stream_headers() -> dict[str, str]:
+async def _camera_runtime_response(camera_id: str) -> dict[str, Any]:
+    stream_path = _camera_stream_path(camera_id)
+    is_online = await _mediamtx_path_is_online(stream_path)
+    playback_url = None
+    if is_online and MEDIAMTX_PLAYBACK_BASE_URL:
+        playback_url = f"{MEDIAMTX_PLAYBACK_BASE_URL}/{quote(stream_path, safe='')}/"
+
+    if not is_online:
+        message = "Raspberry Pi is not publishing this camera stream"
+    elif playback_url is None:
+        message = "Camera stream is online, but the playback base URL is not configured"
+    else:
+        message = "Camera stream is online"
+
     return {
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache",
-        "X-Accel-Buffering": "no",
+        "cameraId": camera_id,
+        "status": "ONLINE" if is_online else "IDLE",
+        "playbackUrl": playback_url,
+        "message": message,
     }
 
+
+@app.get("/internal/cameras/{camera_id}/status")
+async def camera_runtime_status(
+    camera_id: str,
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
+    return await _camera_runtime_response(camera_id)
+
+
+@app.post("/internal/cameras/{camera_id}/live/start")
+async def start_camera_live_stream(
+    camera_id: str,
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
+    raise HTTPException(
+        status_code=409,
+        detail="Live stream is managed by the Raspberry Pi systemd service",
+    )
+
+
+@app.post("/internal/cameras/{camera_id}/live/stop")
+async def stop_camera_live_stream(
+    camera_id: str,
+    x_internal_api_key: str | None = Header(default=None, alias="X-Internal-Api-Key"),
+) -> dict[str, Any]:
+    _require_api_key(x_internal_api_key, FASTAPI_INTERNAL_API_KEY, "FastAPI internal API key")
+    raise HTTPException(
+        status_code=409,
+        detail="Live stream is managed by the Raspberry Pi systemd service",
+    )
+
 # 여기서는 llm 
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "peztz123@")
-DB_HOST = os.getenv("DB_HOST", "34.50.7.78")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
 DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME", "Peztz_DB")
+DB_NAME = os.getenv("DB_NAME")
 
 class ReportRequest(BaseModel):
     cage_id: str  
     pet_name: str
 
+
+def _generate_gemini_report(user_message: str, system_instruction: str):
+    return genai.Client().models.generate_content(
+        model="gemini-2.5-flash",
+        contents=user_message,
+        config=types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.6,
+        ),
+    )
+
 @app.post("/api/report/generate")
 async def generate_pet_report(request: ReportRequest):
     conn = None
     try:
+        if not all((DB_USER, DB_PASSWORD, DB_HOST, DB_NAME)):
+            raise RuntimeError("Database configuration is incomplete")
+
         # 1. PostgreSQL DB 연결
         conn = await asyncpg.connect(
             user=DB_USER, password=DB_PASSWORD,
@@ -296,7 +344,7 @@ async def generate_pet_report(request: ReportRequest):
         query = """
             SELECT l.log_type, l.data, l.created_at
             FROM public.pet_logs l
-            JOIN public.access_sessions s ON l.session_id = s.session_id
+            JOIN public.access_session s ON l.session_id = s.session_id
             WHERE s.cage_id = $1::uuid
             ORDER BY l.created_at DESC
             LIMIT 20
@@ -345,13 +393,10 @@ async def generate_pet_report(request: ReportRequest):
         """
 
         # 5. Gemini 호출
-        response = gemini_client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=user_message,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                temperature=0.6,
-            ),
+        response = await asyncio.to_thread(
+            _generate_gemini_report,
+            user_message,
+            system_instruction,
         )
         
         ai_report_text = response.text
@@ -363,10 +408,9 @@ async def generate_pet_report(request: ReportRequest):
             "report": ai_report_text
         }
 
-    except Exception as e:
-        # 터미널에 진짜 에러 원인을 찍어주는 로직 유지
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception as exc:
+        logger.exception("Pet report generation failed")
+        raise HTTPException(status_code=500, detail="Pet report generation failed") from exc
         
     finally:
         if conn:

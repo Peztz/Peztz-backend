@@ -1,0 +1,21 @@
+[Unit]
+Description=Peztz IP camera relay to MediaMTX
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/peztz/camera-stream.env
+ExecStart=/opt/peztz-camera/stream_camera.sh
+Restart=always
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGINT
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
