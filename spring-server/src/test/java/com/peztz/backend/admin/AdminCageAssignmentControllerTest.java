@@ -561,7 +561,7 @@ class AdminCageAssignmentControllerTest {
 				)
 				""");
 		jdbcTemplate.execute("""
-				create table if not exists public."pets" (
+				create table if not exists public."Pets" (
 					pet_id uuid primary key,
 					user_id uuid not null,
 					name varchar(50) not null,
@@ -601,7 +601,7 @@ class AdminCageAssignmentControllerTest {
 	private void deleteRows() {
 		jdbcTemplate.update("delete from public.access_session");
 		jdbcTemplate.update("delete from public.cage");
-		jdbcTemplate.update("delete from public.\"pets\"");
+		jdbcTemplate.update("delete from public.\"Pets\"");
 		jdbcTemplate.update("delete from public.auth_token");
 		jdbcTemplate.update("delete from public.raspberrypi");
 		jdbcTemplate.update("delete from public.hospitals");
