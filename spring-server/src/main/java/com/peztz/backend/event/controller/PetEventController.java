@@ -21,12 +21,12 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/pet-events")
 @RequiredArgsConstructor
-@Tag(name = "Pet Event", description = "Owner abnormal behavior event lookup APIs")
+@Tag(name = "반려동물 이벤트", description = "견주용 이상행동 이벤트 조회 API")
 public class PetEventController {
 
 	private final PetEventService petEventService;
 
-	@Operation(summary = "List my pet events", description = "Optionally filters events by an owned pet ID.")
+	@Operation(summary = "내 반려동물 이벤트 목록 조회", description = "소유한 반려동물 ID로 이벤트를 선택적으로 필터링합니다.")
 	@GetMapping("/my")
 	public ResponseEntity<List<PetEventResponse>> findMine(
 			@RequestHeader(value = "Authorization", required = false) String authorization,
@@ -34,7 +34,7 @@ public class PetEventController {
 		return ResponseEntity.ok(petEventService.findMine(authorization, petId));
 	}
 
-	@Operation(summary = "Get my pet event")
+	@Operation(summary = "내 반려동물 이벤트 단건 조회")
 	@GetMapping("/{eventId}")
 	public ResponseEntity<PetEventResponse> findById(
 			@RequestHeader(value = "Authorization", required = false) String authorization,

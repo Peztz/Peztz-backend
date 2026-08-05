@@ -37,122 +37,122 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
-@Tag(name = "Admin", description = "Admin read-only dashboard and management APIs")
+@Tag(name = "관리자", description = "관리자 대시보드 조회 및 관리 API")
 public class AdminController {
 
 	private final AdminService adminService;
 
-	@Operation(summary = "Get admin dashboard summary", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "관리자 대시보드 요약 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(schema = @Schema(implementation = AdminSummaryResponse.class))),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content)
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content)
 	})
 	@GetMapping("/summary")
 	public ResponseEntity<AdminSummaryResponse> getSummary(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(adminService.getSummary(authorization));
 	}
 
-	@Operation(summary = "List facilities for admin", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "관리자용 시설 목록 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(array = @ArraySchema(schema = @Schema(implementation = AdminFacilityResponse.class)))),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content)
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content)
 	})
 	@GetMapping("/facilities")
 	public ResponseEntity<List<AdminFacilityResponse>> getFacilities(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(adminService.getFacilities(authorization));
 	}
 
-	@Operation(summary = "Create facility for admin", responses = {
-			@ApiResponse(responseCode = "200", description = "Created",
+	@Operation(summary = "관리자용 시설 생성", responses = {
+			@ApiResponse(responseCode = "200", description = "생성 성공",
 					content = @Content(schema = @Schema(implementation = AdminFacilityResponse.class))),
-			@ApiResponse(responseCode = "400", description = "Invalid request or duplicate facility name", content = @Content),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content)
+			@ApiResponse(responseCode = "400", description = "잘못된 요청 또는 중복된 시설명", content = @Content),
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content)
 	})
 	@PostMapping("/facilities")
 	public ResponseEntity<AdminFacilityResponse> createFacility(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@Valid @RequestBody AdminFacilityCreateRequest request) {
 		return ResponseEntity.ok(adminService.createFacility(authorization, request));
 	}
 
-	@Operation(summary = "Update facility for admin", responses = {
-			@ApiResponse(responseCode = "200", description = "Updated",
+	@Operation(summary = "관리자용 시설 수정", responses = {
+			@ApiResponse(responseCode = "200", description = "수정 성공",
 					content = @Content(schema = @Schema(implementation = AdminFacilityResponse.class))),
-			@ApiResponse(responseCode = "400", description = "Invalid request or duplicate facility name", content = @Content),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content),
-			@ApiResponse(responseCode = "404", description = "Facility not found", content = @Content)
+			@ApiResponse(responseCode = "400", description = "잘못된 요청 또는 중복된 시설명", content = @Content),
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content),
+			@ApiResponse(responseCode = "404", description = "시설을 찾을 수 없음", content = @Content)
 	})
 	@PatchMapping("/facilities/{facilityId}")
 	public ResponseEntity<AdminFacilityResponse> updateFacility(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Facility ID", example = "11111111-1111-1111-1111-111111111111")
+			@Parameter(description = "시설 ID", example = "11111111-1111-1111-1111-111111111111")
 			@PathVariable UUID facilityId,
 			@Valid @RequestBody AdminFacilityUpdateRequest request) {
 		return ResponseEntity.ok(adminService.updateFacility(authorization, facilityId, request));
 	}
 
-	@Operation(summary = "List cages for admin", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "관리자용 케이지 목록 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(array = @ArraySchema(schema = @Schema(implementation = AdminCageResponse.class)))),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content)
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content)
 	})
 	@GetMapping("/cages")
 	public ResponseEntity<List<AdminCageResponse>> getCages(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(adminService.getCages(authorization));
 	}
 
-	@Operation(summary = "Update cage facility and device assignment", responses = {
-			@ApiResponse(responseCode = "200", description = "Updated",
+	@Operation(summary = "케이지의 시설 및 장치 할당 수정", responses = {
+			@ApiResponse(responseCode = "200", description = "수정 성공",
 					content = @Content(schema = @Schema(implementation = AdminCageAssignmentResponse.class))),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content),
-			@ApiResponse(responseCode = "404", description = "Cage, facility, or Raspberry Pi not found", content = @Content)
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content),
+			@ApiResponse(responseCode = "404", description = "케이지, 시설 또는 라즈베리파이를 찾을 수 없음", content = @Content)
 	})
 	@PatchMapping("/cages/{cageId}/assignment")
 	public ResponseEntity<AdminCageAssignmentResponse> updateCageAssignment(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+			@Parameter(description = "케이지 ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 			@PathVariable UUID cageId,
 			@RequestBody AdminCageAssignmentRequest request) {
 		return ResponseEntity.ok(adminService.updateCageAssignment(authorization, cageId, request));
 	}
 
-	@Operation(summary = "List devices for admin", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "관리자용 장치 목록 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(array = @ArraySchema(schema = @Schema(implementation = AdminDeviceResponse.class)))),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content)
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content)
 	})
 	@GetMapping("/devices")
 	public ResponseEntity<List<AdminDeviceResponse>> getDevices(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(adminService.getDevices(authorization));
 	}
 
-	@Operation(summary = "List users for admin", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "관리자용 사용자 목록 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(array = @ArraySchema(schema = @Schema(implementation = AdminUserResponse.class)))),
-			@ApiResponse(responseCode = "401", description = "Authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "Admin role required", content = @Content)
+			@ApiResponse(responseCode = "401", description = "인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "관리자 권한 필요", content = @Content)
 	})
 	@GetMapping("/users")
 	public ResponseEntity<List<AdminUserResponse>> getUsers(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(adminService.getUsers(authorization));
 	}

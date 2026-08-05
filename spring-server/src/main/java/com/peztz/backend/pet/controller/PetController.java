@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/pets")
 @RequiredArgsConstructor
-@Tag(name = "Pet", description = "내 반려동물 등록, 조회, 수정, 삭제 API")
+@Tag(name = "반려동물", description = "내 반려동물 등록, 조회, 수정, 삭제 API")
 public class PetController {
 
 	private final PetService petService;
@@ -44,7 +44,7 @@ public class PetController {
 			})
 	@PostMapping
 	public ResponseEntity<PetResponse> create(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@Valid @RequestBody PetRequest request) {
 		return ResponseEntity.ok(petService.create(authorization, request));
@@ -58,7 +58,7 @@ public class PetController {
 			})
 	@GetMapping("/my")
 	public ResponseEntity<List<PetResponse>> findMine(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(petService.findMine(authorization));
 	}
@@ -71,9 +71,9 @@ public class PetController {
 			})
 	@GetMapping("/{petId}")
 	public ResponseEntity<PetResponse> findById(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Pet ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
+			@Parameter(description = "반려동물 ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 			@PathVariable UUID petId) {
 		return ResponseEntity.ok(petService.findMineById(authorization, petId));
 	}
@@ -86,9 +86,9 @@ public class PetController {
 			})
 	@PutMapping("/{petId}")
 	public ResponseEntity<PetResponse> update(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Pet ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
+			@Parameter(description = "반려동물 ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 			@PathVariable UUID petId,
 			@Valid @RequestBody PetRequest request) {
 		return ResponseEntity.ok(petService.update(authorization, petId, request));
@@ -101,9 +101,9 @@ public class PetController {
 			})
 	@DeleteMapping("/{petId}")
 	public ResponseEntity<Void> delete(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Pet ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
+			@Parameter(description = "반려동물 ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 			@PathVariable UUID petId) {
 		petService.delete(authorization, petId);
 		return ResponseEntity.noContent().build();

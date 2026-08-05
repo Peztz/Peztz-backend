@@ -4,17 +4,17 @@ import java.time.LocalDateTime;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "API error response")
+@Schema(description = "API 오류 응답")
 public record ApiErrorResponse(
-		@Schema(description = "Error timestamp", example = "2026-06-08T12:00:00")
+		@Schema(description = "오류 발생 시각", example = "2026-06-08T12:00:00")
 		LocalDateTime timestamp,
 
-		@Schema(description = "HTTP status code", example = "400")
+		@Schema(description = "HTTP 상태 코드", example = "400")
 		int status,
 
-		@Schema(description = "Error reason", example = "Bad Request")
+		@Schema(description = "오류 사유", example = "Bad Request")
 		String error,
 
-		@Schema(description = "Error message", example = "Invalid request")
+		@Schema(description = "오류 메시지", example = "Invalid request")
 		String message) {
 }

@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "SmartThings device response")
+@Schema(description = "스마트싱스 장치 응답")
 public record SmartThingsDeviceResponse(
 		String deviceId,
 		String name,

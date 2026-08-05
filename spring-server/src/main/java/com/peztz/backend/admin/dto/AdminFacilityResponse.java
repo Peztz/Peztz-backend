@@ -4,7 +4,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Admin facility list item")
+@Schema(description = "관리자용 시설 목록 항목")
 public record AdminFacilityResponse(
 		UUID facilityId,
 		String facilityName,

@@ -26,7 +26,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
-@Tag(name = "Auth", description = "회원가입, 로그인, 내 정보 API")
+@Tag(name = "인증", description = "회원가입, 로그인, 내 정보 API")
 public class AuthController {
 
 	private final AuthService authService;
@@ -67,7 +67,7 @@ public class AuthController {
 			})
 	@GetMapping("/me")
 	public ResponseEntity<AuthUserResponse> me(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(authService.me(authorization));
 	}

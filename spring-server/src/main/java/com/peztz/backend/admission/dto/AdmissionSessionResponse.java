@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Admission session response", example = """
+@Schema(description = "입실 세션 응답", example = """
 		{
 		  "sessionId": 1000000002,
 		  "petId": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
@@ -17,24 +17,24 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record AdmissionSessionResponse(
-		@Schema(description = "Session ID", example = "1000000002")
+		@Schema(description = "세션 ID", example = "1000000002")
 		Long sessionId,
 
-		@Schema(description = "Pet ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
+		@Schema(description = "반려동물 ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 		UUID petId,
 
-		@Schema(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+		@Schema(description = "케이지 ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 		UUID cageId,
 
-		@Schema(description = "Six digit access code", example = "\"123456\"")
+		@Schema(description = "6자리 접근 코드", example = "\"123456\"")
 		String accessCode,
 
-		@Schema(description = "Session status", example = "ACTIVE")
+		@Schema(description = "세션 상태", example = "ACTIVE")
 		String status,
 
-		@Schema(description = "Session start time", example = "2026-06-08T12:00:00")
+		@Schema(description = "세션 시작 시각", example = "2026-06-08T12:00:00")
 		LocalDateTime startedAt,
 
-		@Schema(description = "Session end time", example = "2026-06-08T18:00:00", nullable = true)
+		@Schema(description = "세션 종료 시각", example = "2026-06-08T18:00:00", nullable = true)
 		LocalDateTime endedAt) {
 }

@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Facility admission session detail response", example = """
+@Schema(description = "시설 입실 세션 상세 응답", example = """
 		{
 		  "sessionId": 1000000003,
 		  "petId": "26f294e7-bb04-4fc0-bca7-f8d014d4dc29",
@@ -22,39 +22,39 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record FacilityAdmissionSessionDetailResponse(
-		@Schema(description = "Session ID", example = "1000000003")
+		@Schema(description = "세션 ID", example = "1000000003")
 		Long sessionId,
 
-		@Schema(description = "Pet ID", example = "26f294e7-bb04-4fc0-bca7-f8d014d4dc29")
+		@Schema(description = "반려동물 ID", example = "26f294e7-bb04-4fc0-bca7-f8d014d4dc29")
 		UUID petId,
 
-		@Schema(description = "Pet name", example = "Choco")
+		@Schema(description = "반려동물 이름", example = "Choco")
 		String petName,
 
-		@Schema(description = "Owner user ID", example = "0684d206-a393-439c-8b6a-1b861a1ca7ec")
+		@Schema(description = "견주 사용자 ID", example = "0684d206-a393-439c-8b6a-1b861a1ca7ec")
 		UUID ownerId,
 
-		@Schema(description = "Owner email", example = "test@naver.com")
+		@Schema(description = "견주 이메일", example = "test@naver.com")
 		String ownerEmail,
 
-		@Schema(description = "Cage ID", example = "b228a4ed-7842-430a-a052-259f2bab9d70")
+		@Schema(description = "케이지 ID", example = "b228a4ed-7842-430a-a052-259f2bab9d70")
 		UUID cageId,
 
-		@Schema(description = "Cage name", example = "Facility Test Cage")
+		@Schema(description = "케이지 이름", example = "Facility Test Cage")
 		String cageName,
 
-		@Schema(description = "Cage number", example = "F-1")
+		@Schema(description = "케이지 번호", example = "F-1")
 		String cageNumber,
 
-		@Schema(description = "Six digit access code", example = "\"994413\"")
+		@Schema(description = "6자리 접근 코드", example = "\"994413\"")
 		String accessCode,
 
-		@Schema(description = "Session status", example = "ACTIVE")
+		@Schema(description = "세션 상태", example = "ACTIVE")
 		String status,
 
-		@Schema(description = "Session start time", example = "2026-06-08T17:57:45")
+		@Schema(description = "세션 시작 시각", example = "2026-06-08T17:57:45")
 		LocalDateTime startedAt,
 
-		@Schema(description = "Session end time", example = "2026-06-08T18:15:54", nullable = true)
+		@Schema(description = "세션 종료 시각", example = "2026-06-08T18:15:54", nullable = true)
 		LocalDateTime endedAt) {
 }

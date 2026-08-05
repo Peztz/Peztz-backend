@@ -31,7 +31,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/admission-sessions")
 @RequiredArgsConstructor
-@Tag(name = "Admission Session", description = "입실 세션 생성, 조회, 종료, 접근 코드 인증 API")
+@Tag(name = "입실 세션", description = "입실 세션 생성, 조회, 종료, 접근 코드 인증 API")
 public class AdmissionSessionController {
 
 	private final AdmissionSessionService admissionSessionService;
@@ -46,7 +46,7 @@ public class AdmissionSessionController {
 			})
 	@PostMapping
 	public ResponseEntity<AdmissionSessionResponse> create(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@Valid @RequestBody AdmissionSessionCreateRequest request) {
 		return ResponseEntity.ok(admissionSessionService.create(authorization, request));
@@ -60,9 +60,9 @@ public class AdmissionSessionController {
 			})
 	@GetMapping("/{sessionId}")
 	public ResponseEntity<AdmissionSessionResponse> findById(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "1000000002")
+			@Parameter(description = "세션 ID", example = "1000000002")
 			@PathVariable Long sessionId) {
 		return ResponseEntity.ok(admissionSessionService.findById(authorization, sessionId));
 	}
@@ -74,7 +74,7 @@ public class AdmissionSessionController {
 	})
 	@GetMapping("/my")
 	public ResponseEntity<List<AdmissionSessionResponse>> findMine(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(admissionSessionService.findMine(authorization));
 	}
@@ -88,9 +88,9 @@ public class AdmissionSessionController {
 			})
 	@PatchMapping("/{sessionId}/end")
 	public ResponseEntity<AdmissionSessionResponse> end(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "Session ID", example = "1000000002")
+			@Parameter(description = "세션 ID", example = "1000000002")
 			@PathVariable Long sessionId) {
 		return ResponseEntity.ok(admissionSessionService.end(authorization, sessionId));
 	}

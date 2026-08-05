@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/raspberrypis")
 @RequiredArgsConstructor
-@Tag(name = "Raspberry Pi", description = "라즈베리파이 장치 등록 및 상태 관리 내부 API")
+@Tag(name = "라즈베리파이", description = "라즈베리파이 장치 등록 및 상태 관리 내부 API")
 public class RaspberryPiController {
 
 	private final RaspberryPiService raspberryPiService;
