@@ -2,7 +2,7 @@ package com.peztz.backend.admission.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Access code verify response", example = """
+@Schema(description = "접근 코드 인증 응답", example = """
 		{
 		  "valid": true,
 		  "sessionId": 1000000002,
@@ -11,15 +11,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record AccessCodeVerifyResponse(
-		@Schema(description = "Whether access code is valid", example = "true")
+		@Schema(description = "접근 코드 유효 여부", example = "true")
 		boolean valid,
 
-		@Schema(description = "Session ID", example = "1000000002")
+		@Schema(description = "세션 ID", example = "1000000002")
 		Long sessionId,
 
-		@Schema(description = "Pet name", example = "초코")
+		@Schema(description = "반려동물 이름", example = "초코")
 		String petName,
 
-		@Schema(description = "Cage name", example = "A-1 케이지")
+		@Schema(description = "케이지 이름", example = "A-1 케이지")
 		String cageName) {
 }

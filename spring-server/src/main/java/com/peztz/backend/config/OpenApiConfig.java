@@ -16,15 +16,15 @@ public class OpenApiConfig {
 	public OpenAPI peztzOpenAPI() {
 		return new OpenAPI()
 				.info(new Info()
-						.title("Peztz Backend API")
+						.title("Peztz 백엔드 API")
 						.description("Peztz 프로젝트의 Spring Boot REST API 문서입니다. 라즈베리파이 등록, 장치 목록 조회, 스트리밍 URL 조회 API를 포함합니다.")
 						.version("v1.0.0"))
 				.servers(List.of(
 						new Server()
 								.url("http://localhost:8080")
-								.description("local"),
+								.description("로컬"),
 						new Server()
 								.url("http://34.50.7.78:8080")
-								.description("production")));
+								.description("운영")));
 	}
 }

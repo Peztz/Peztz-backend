@@ -30,7 +30,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api")
 @RequiredArgsConstructor
-@Tag(name = "Cage", description = "케이지 등록, 조회, 수정, 삭제 API")
+@Tag(name = "케이지", description = "케이지 등록, 조회, 수정, 삭제 API")
 public class CageController {
 
 	private final CageService cageService;
@@ -52,7 +52,7 @@ public class CageController {
 	})
 	@GetMapping("/cages/{cageId}")
 	public ResponseEntity<CageResponse> findById(
-			@Parameter(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+			@Parameter(description = "케이지 ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 			@PathVariable UUID cageId) {
 		return ResponseEntity.ok(cageService.findById(cageId));
 	}
@@ -65,7 +65,7 @@ public class CageController {
 			})
 	@PostMapping("/facilities/{facilityId}/cages")
 	public ResponseEntity<CageResponse> create(
-			@Parameter(description = "Facility ID", example = "0e96bc6a-90a5-45cc-ac64-37d19254e7a2")
+			@Parameter(description = "시설 ID", example = "0e96bc6a-90a5-45cc-ac64-37d19254e7a2")
 			@PathVariable UUID facilityId,
 			@Valid @RequestBody CageRequest request) {
 		return ResponseEntity.ok(cageService.create(facilityId, request));
@@ -78,7 +78,7 @@ public class CageController {
 	})
 	@GetMapping("/facilities/{facilityId}/cages")
 	public ResponseEntity<List<CageResponse>> findByFacility(
-			@Parameter(description = "Facility ID", example = "0e96bc6a-90a5-45cc-ac64-37d19254e7a2")
+			@Parameter(description = "시설 ID", example = "0e96bc6a-90a5-45cc-ac64-37d19254e7a2")
 			@PathVariable UUID facilityId) {
 		return ResponseEntity.ok(cageService.findByFacility(facilityId));
 	}
@@ -90,7 +90,7 @@ public class CageController {
 	})
 	@PutMapping("/cages/{cageId}")
 	public ResponseEntity<CageResponse> update(
-			@Parameter(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+			@Parameter(description = "케이지 ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 			@PathVariable UUID cageId,
 			@Valid @RequestBody CageRequest request) {
 		return ResponseEntity.ok(cageService.update(cageId, request));
@@ -102,7 +102,7 @@ public class CageController {
 	})
 	@DeleteMapping("/cages/{cageId}")
 	public ResponseEntity<Void> delete(
-			@Parameter(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+			@Parameter(description = "케이지 ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 			@PathVariable UUID cageId) {
 		cageService.delete(cageId);
 		return ResponseEntity.noContent().build();

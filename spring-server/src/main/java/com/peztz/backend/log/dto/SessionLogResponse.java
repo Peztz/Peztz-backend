@@ -3,7 +3,7 @@ package com.peztz.backend.log.dto;
 import java.time.LocalDateTime;
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Session log response", example = """
+@Schema(description = "세션 로그 응답", example = """
 		{
 		  "id": 90008,
 		  "type": "SENSOR",
@@ -14,21 +14,21 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record SessionLogResponse(
-		@Schema(description = "Log ID", example = "90008")
+		@Schema(description = "로그 ID", example = "90008")
 		Long id,
 
-		@Schema(description = "Log type", example = "SENSOR")
+		@Schema(description = "로그 유형", example = "SENSOR")
 		String type,
 
-		@Schema(description = "Log message", example = "온습도 센서 데이터 수신")
+		@Schema(description = "로그 메시지", example = "온습도 센서 데이터 수신")
 		String message,
 
-		@Schema(description = "Temperature", example = "25.4")
+		@Schema(description = "온도", example = "25.4")
 		Double temperature,
 
-		@Schema(description = "Humidity", example = "61.2")
+		@Schema(description = "습도", example = "61.2")
 		Double humidity,
 
-		@Schema(description = "Created date time", example = "2026-06-08T12:30:00")
+		@Schema(description = "생성 시각", example = "2026-06-08T12:30:00")
 		LocalDateTime createdAt) {
 }

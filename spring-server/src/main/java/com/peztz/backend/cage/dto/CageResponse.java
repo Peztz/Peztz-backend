@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Cage response", example = """
+@Schema(description = "케이지 응답", example = """
 		{
 		  "id": "d69fc7ff-481c-4305-b81c-551955a1ce23",
 		  "facilityId": "0e96bc6a-90a5-45cc-ac64-37d19254e7a2",
@@ -17,24 +17,24 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record CageResponse(
-		@Schema(description = "Cage ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
+		@Schema(description = "케이지 ID", example = "d69fc7ff-481c-4305-b81c-551955a1ce23")
 		UUID id,
 
-		@Schema(description = "Facility ID", example = "0e96bc6a-90a5-45cc-ac64-37d19254e7a2")
+		@Schema(description = "시설 ID", example = "0e96bc6a-90a5-45cc-ac64-37d19254e7a2")
 		UUID facilityId,
 
-		@Schema(description = "Cage name", example = "A-1 케이지")
+		@Schema(description = "케이지 이름", example = "A-1 케이지")
 		String name,
 
-		@Schema(description = "Cage number", example = "A-1")
+		@Schema(description = "케이지 번호", example = "A-1")
 		String cageNumber,
 
-		@Schema(description = "Cage status", example = "AVAILABLE")
+		@Schema(description = "케이지 상태", example = "AVAILABLE")
 		String status,
 
-		@Schema(description = "Connected Raspberry Pi device ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
+		@Schema(description = "연결된 라즈베리파이 장치 ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 		UUID raspberryPiDeviceId,
 
-		@Schema(description = "Created date time", example = "2026-06-08T12:00:00")
+		@Schema(description = "생성 시각", example = "2026-06-08T12:00:00")
 		LocalDateTime createdAt) {
 }

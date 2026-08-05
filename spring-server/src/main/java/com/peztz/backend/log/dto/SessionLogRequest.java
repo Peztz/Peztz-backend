@@ -3,7 +3,7 @@ package com.peztz.backend.log.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-@Schema(description = "Session log create request", example = """
+@Schema(description = "세션 로그 생성 요청", example = """
 		{
 		  "type": "SENSOR",
 		  "message": "온습도 센서 데이터 수신",
@@ -12,16 +12,16 @@ import jakarta.validation.constraints.NotBlank;
 		}
 		""")
 public record SessionLogRequest(
-		@Schema(description = "Log type", example = "SENSOR", allowableValues = {"SENSOR", "FEED", "WATER", "MOTION", "NOTE"})
+		@Schema(description = "로그 유형", example = "SENSOR", allowableValues = {"SENSOR", "FEED", "WATER", "MOTION", "NOTE"})
 		@NotBlank
 		String type,
 
-		@Schema(description = "Log message", example = "온습도 센서 데이터 수신")
+		@Schema(description = "로그 메시지", example = "온습도 센서 데이터 수신")
 		String message,
 
-		@Schema(description = "Temperature", example = "25.4")
+		@Schema(description = "온도", example = "25.4")
 		Double temperature,
 
-		@Schema(description = "Humidity", example = "61.2")
+		@Schema(description = "습도", example = "61.2")
 		Double humidity) {
 }

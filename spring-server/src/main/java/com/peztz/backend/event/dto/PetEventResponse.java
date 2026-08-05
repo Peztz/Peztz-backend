@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Pet abnormal behavior event response")
+@Schema(description = "반려동물 이상행동 이벤트 응답")
 public record PetEventResponse(
 		Long eventId,
 		String externalEventId,

@@ -4,7 +4,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Camera runtime status returned by the FastAPI adapter")
+@Schema(description = "FastAPI 어댑터가 반환하는 카메라 실행 상태")
 public record CameraRuntimeStatusResponse(
 		UUID cameraId,
 		String status,

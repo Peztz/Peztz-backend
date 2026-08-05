@@ -5,7 +5,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-@Schema(description = "Signup request", example = """
+@Schema(description = "회원가입 요청", example = """
 		{
 		  "email": "owner@example.com",
 		  "password": "password1234",
@@ -15,22 +15,22 @@ import jakarta.validation.constraints.Size;
 		}
 		""")
 public record AuthSignupRequest(
-		@Schema(description = "Email", example = "owner@example.com")
+		@Schema(description = "이메일", example = "owner@example.com")
 		@NotBlank @Email
 		String email,
 
-		@Schema(description = "Plain password. It is stored as BCrypt hash.", example = "password1234")
+		@Schema(description = "평문 비밀번호입니다. BCrypt 해시로 저장됩니다.", example = "password1234")
 		@NotBlank @Size(min = 8)
 		String password,
 
-		@Schema(description = "User name", example = "김견주")
+		@Schema(description = "사용자 이름", example = "김견주")
 		@NotBlank
 		String name,
 
-		@Schema(description = "Phone number", example = "010-1234-5678")
+		@Schema(description = "전화번호", example = "010-1234-5678")
 		String phoneNumber,
 
-		@Schema(description = "Role", example = "OWNER", allowableValues = {"OWNER", "FACILITY_MANAGER", "ADMIN"})
+		@Schema(description = "사용자 역할", example = "OWNER", allowableValues = {"OWNER", "FACILITY_MANAGER", "ADMIN"})
 		@NotBlank
 		String role) {
 }

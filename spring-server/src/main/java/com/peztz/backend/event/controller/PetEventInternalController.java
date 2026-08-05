@@ -20,13 +20,13 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/internal/pet-events")
 @RequiredArgsConstructor
-@Tag(name = "Internal Pet Event", description = "FastAPI-to-Spring event ingestion API")
+@Tag(name = "내부 반려동물 이벤트", description = "FastAPI에서 Spring으로 이벤트를 전달하는 내부 API")
 public class PetEventInternalController {
 
 	private final PetEventService petEventService;
 	private final InternalApiKeyService internalApiKeyService;
 
-	@Operation(summary = "Store FastAPI abnormal behavior event")
+	@Operation(summary = "FastAPI 이상행동 이벤트 저장")
 	@PostMapping
 	public ResponseEntity<PetEventResponse> create(
 			@RequestHeader(value = "X-Internal-Api-Key", required = false) String internalApiKey,

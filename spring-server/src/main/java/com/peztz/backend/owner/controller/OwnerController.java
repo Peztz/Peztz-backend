@@ -23,7 +23,7 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/owners/me")
 @RequiredArgsConstructor
-@Tag(name = "Owner", description = "견주 전용 조회 API")
+@Tag(name = "견주", description = "견주 전용 조회 API")
 public class OwnerController {
 
 	private final AdmissionSessionService admissionSessionService;
@@ -36,7 +36,7 @@ public class OwnerController {
 			})
 	@GetMapping("/cages")
 	public ResponseEntity<List<OwnerCageResponse>> findMyCages(
-			@Parameter(description = "Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(admissionSessionService.findMyActiveCages(authorization));
 	}

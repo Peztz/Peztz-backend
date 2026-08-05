@@ -2,7 +2,7 @@ package com.peztz.backend.auth.dto;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Login response", example = """
+@Schema(description = "로그인 응답", example = """
 		{
 		  "accessToken": "sample-token",
 		  "user": {
@@ -14,9 +14,9 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record AuthLoginResponse(
-		@Schema(description = "Bearer token", example = "sample-token")
+		@Schema(description = "Bearer 토큰", example = "sample-token")
 		String accessToken,
 
-		@Schema(description = "Logged in user")
+		@Schema(description = "로그인한 사용자")
 		AuthUserResponse user) {
 }

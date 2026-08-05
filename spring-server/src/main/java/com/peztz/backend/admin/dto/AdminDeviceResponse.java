@@ -5,7 +5,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Admin device list item")
+@Schema(description = "관리자용 장치 목록 항목")
 public record AdminDeviceResponse(
 		UUID deviceId,
 		String macAddress,

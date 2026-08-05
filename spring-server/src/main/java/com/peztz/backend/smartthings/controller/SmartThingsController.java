@@ -22,36 +22,36 @@ import lombok.RequiredArgsConstructor;
 @RestController
 @RequestMapping("/api/smartthings")
 @RequiredArgsConstructor
-@Tag(name = "SmartThings", description = "SmartThings device lookup APIs")
+@Tag(name = "스마트싱스", description = "스마트싱스 장치 조회 API")
 public class SmartThingsController {
 
 	private final SmartThingsService smartThingsService;
 
-	@Operation(summary = "List SmartThings devices", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "스마트싱스 장치 목록 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(schema = @Schema(implementation = SmartThingsDeviceListResponse.class))),
-			@ApiResponse(responseCode = "401", description = "PEZTZ authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "PEZTZ role is not allowed", content = @Content)
+			@ApiResponse(responseCode = "401", description = "PEZTZ 인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "허용되지 않은 PEZTZ 사용자 역할", content = @Content)
 	})
 	@GetMapping("/devices")
 	public ResponseEntity<SmartThingsDeviceListResponse> findDevices(
-			@Parameter(description = "PEZTZ Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "PEZTZ Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(smartThingsService.findDevices(authorization));
 	}
 
-	@Operation(summary = "Get SmartThings device status", responses = {
-			@ApiResponse(responseCode = "200", description = "Lookup succeeded",
+	@Operation(summary = "스마트싱스 장치 상태 조회", responses = {
+			@ApiResponse(responseCode = "200", description = "조회 성공",
 					content = @Content(schema = @Schema(implementation = SmartThingsDeviceStatusResponse.class))),
-			@ApiResponse(responseCode = "401", description = "PEZTZ authentication failed", content = @Content),
-			@ApiResponse(responseCode = "403", description = "PEZTZ role is not allowed", content = @Content),
-			@ApiResponse(responseCode = "404", description = "SmartThings device not found", content = @Content)
+			@ApiResponse(responseCode = "401", description = "PEZTZ 인증 실패", content = @Content),
+			@ApiResponse(responseCode = "403", description = "허용되지 않은 PEZTZ 사용자 역할", content = @Content),
+			@ApiResponse(responseCode = "404", description = "스마트싱스 장치를 찾을 수 없음", content = @Content)
 	})
 	@GetMapping("/devices/{deviceId}/status")
 	public ResponseEntity<SmartThingsDeviceStatusResponse> getDeviceStatus(
-			@Parameter(description = "PEZTZ Bearer access token", example = "Bearer sample-token", required = true)
+			@Parameter(description = "PEZTZ Bearer 인증 토큰", example = "Bearer sample-token", required = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
-			@Parameter(description = "SmartThings device ID", required = true)
+			@Parameter(description = "스마트싱스 장치 ID", required = true)
 			@PathVariable String deviceId) {
 		return ResponseEntity.ok(smartThingsService.getDeviceStatus(authorization, deviceId));
 	}

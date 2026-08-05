@@ -5,7 +5,7 @@ import java.time.LocalDate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 
-@Schema(description = "Pet create/update request", example = """
+@Schema(description = "반려동물 생성 및 수정 요청", example = """
 		{
 		  "name": "초코",
 		  "species": "DOG",
@@ -17,26 +17,26 @@ import jakarta.validation.constraints.NotBlank;
 		}
 		""")
 public record PetRequest(
-		@Schema(description = "Pet name", example = "초코")
+		@Schema(description = "반려동물 이름", example = "초코")
 		@NotBlank
 		String name,
 
-		@Schema(description = "Species", example = "DOG")
+		@Schema(description = "동물 종", example = "DOG")
 		String species,
 
-		@Schema(description = "Breed", example = "푸들")
+		@Schema(description = "품종", example = "푸들")
 		@NotBlank
 		String breed,
 
-		@Schema(description = "Gender", example = "MALE")
+		@Schema(description = "성별", example = "MALE")
 		String gender,
 
-		@Schema(description = "Birth date", example = "2022-03-01")
+		@Schema(description = "생년월일", example = "2022-03-01")
 		LocalDate birthDate,
 
-		@Schema(description = "Weight in kilograms", example = "5.2")
+		@Schema(description = "체중(kg)", example = "5.2")
 		Double weightKg,
 
-		@Schema(description = "Memo", example = "겁이 조금 많음")
+		@Schema(description = "메모", example = "겁이 조금 많음")
 		String memo) {
 }

@@ -12,7 +12,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
-@Schema(description = "FastAPI abnormal behavior event request")
+@Schema(description = "FastAPI 이상행동 이벤트 요청")
 public record PetEventCreateRequest(
 		@NotBlank @Size(max = 100)
 		String externalEventId,

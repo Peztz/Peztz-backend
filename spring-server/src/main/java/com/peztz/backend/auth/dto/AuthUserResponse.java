@@ -4,7 +4,7 @@ import java.util.UUID;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
-@Schema(description = "Authenticated user response", example = """
+@Schema(description = "인증된 사용자 응답", example = """
 		{
 		  "id": "7bf2b0d2-dd67-4002-929a-d4505f6af890",
 		  "email": "owner@example.com",
@@ -13,15 +13,15 @@ import io.swagger.v3.oas.annotations.media.Schema;
 		}
 		""")
 public record AuthUserResponse(
-		@Schema(description = "User ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
+		@Schema(description = "사용자 ID", example = "7bf2b0d2-dd67-4002-929a-d4505f6af890")
 		UUID id,
 
-		@Schema(description = "Email", example = "owner@example.com")
+		@Schema(description = "이메일", example = "owner@example.com")
 		String email,
 
-		@Schema(description = "User name", example = "김견주")
+		@Schema(description = "사용자 이름", example = "김견주")
 		String name,
 
-		@Schema(description = "Role", example = "OWNER")
+		@Schema(description = "사용자 역할", example = "OWNER")
 		String role) {
 }
