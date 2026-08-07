@@ -1,0 +1,354 @@
+name: Deploy Docker Production to GCP
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "spring-server/**"
+      - "fastapi-stream-server/**"
+      - "infra/**"
+      - ".github/workflows/deploy-docker-production.yml"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peztz-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && vars.PEZTZ_DOCKER_PRODUCTION_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+          cache-dependency-path: |
+            spring-server/build.gradle
+            spring-server/settings.gradle
+            spring-server/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Test Spring Boot
+        working-directory: spring-server
+        run: |
+          chmod +x ./gradlew
+          ./gradlew test --no-daemon
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            fastapi-stream-server/requirements.txt
+            fastapi-stream-server/requirements-dev.txt
+
+      - name: Test FastAPI
+        run: |
+          python -m pip install -r fastapi-stream-server/requirements-dev.txt
+          cd fastapi-stream-server
+          python -m pytest -q
+
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf "%s\n" "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/gcp_key
+          sed -i 's/\r$//' ~/.ssh/gcp_key
+          chmod 600 ~/.ssh/gcp_key
+          ssh-keygen -y -f ~/.ssh/gcp_key > /dev/null
+          ssh-keyscan -H "${{ secrets.GCP_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Deploy production containers
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/gcp_key \
+            -o IdentitiesOnly=yes \
+            "${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}" \
+            "DEPLOY_SHA='${DEPLOY_SHA}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          REPOSITORY_DIR="$HOME/Peztz-backend-docker"
+          STATE_DIR="$HOME/.peztz-deploy"
+
+          checkout_revision() {
+            revision="$1"
+            cd "$REPOSITORY_DIR"
+            git cat-file -e "${revision}^{commit}"
+            git checkout --detach "$revision"
+            cd infra
+          }
+
+          cd "$REPOSITORY_DIR"
+
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            echo "The deployment checkout contains tracked local changes." >&2
+            exit 1
+          fi
+
+          git fetch --prune origin main
+          checkout_revision "$DEPLOY_SHA"
+
+          test -f .env
+          test -f mediamtx/mediamtx.yml
+
+          dotenv_value() {
+            key="$1"
+            default_value="$2"
+            value="$(sed -n "s/^${key}=//p" .env | tail -n 1 | tr -d '\r')"
+            value="${value%\"}"
+            value="${value#\"}"
+            value="${value%\'}"
+            value="${value#\'}"
+            printf '%s' "${value:-$default_value}"
+          }
+
+          compose() {
+            docker compose --env-file .env "$@"
+          }
+
+          SPRING_BIND_ADDRESS="$(dotenv_value SPRING_BIND_ADDRESS 127.0.0.1)"
+          SPRING_HOST_PORT="$(dotenv_value SPRING_HOST_PORT 18080)"
+          FASTAPI_BIND_ADDRESS="$(dotenv_value FASTAPI_BIND_ADDRESS 127.0.0.1)"
+          FASTAPI_HOST_PORT="$(dotenv_value FASTAPI_HOST_PORT 18000)"
+
+          if [ "$SPRING_BIND_ADDRESS" != "0.0.0.0" ] || \
+             [ "$SPRING_HOST_PORT" != "8080" ] || \
+             [ "$FASTAPI_BIND_ADDRESS" != "0.0.0.0" ] || \
+             [ "$FASTAPI_HOST_PORT" != "8000" ]; then
+            echo "Production deploy requires 0.0.0.0:8080 and 0.0.0.0:8000 in infra/.env." >&2
+            exit 1
+          fi
+
+          if ! docker inspect mediamtx > /dev/null 2>&1 || \
+             [ "$(docker inspect --format '{{.State.Running}}' mediamtx)" != "true" ]; then
+            echo "The existing MediaMTX container is not running." >&2
+            exit 1
+          fi
+
+          MEDIAMTX_ID="$(docker inspect --format '{{.Id}}' mediamtx)"
+          MEDIAMTX_STARTED_AT="$(docker inspect --format '{{.State.StartedAt}}' mediamtx)"
+
+          SPRING_SYSTEMD_ACTIVE=0
+          FASTAPI_SYSTEMD_ACTIVE=0
+          systemctl is-active --quiet peztz-spring && SPRING_SYSTEMD_ACTIVE=1
+          systemctl is-active --quiet peztz-api && FASTAPI_SYSTEMD_ACTIVE=1
+
+          if [ "$SPRING_SYSTEMD_ACTIVE" != "$FASTAPI_SYSTEMD_ACTIVE" ]; then
+            echo "Spring and FastAPI systemd services are in a mixed state." >&2
+            exit 1
+          fi
+
+          PREVIOUS_SPRING_IMAGE="$(docker inspect --format '{{.Config.Image}}' peztz-spring 2>/dev/null || true)"
+          PREVIOUS_FASTAPI_IMAGE="$(docker inspect --format '{{.Config.Image}}' peztz-fastapi 2>/dev/null || true)"
+          PREVIOUS_DEPLOY_SHA=""
+
+          if [ -f "$STATE_DIR/current-images.env" ]; then
+            PREVIOUS_DEPLOY_SHA="$(sed -n 's/^DEPLOY_SHA=//p' \
+              "$STATE_DIR/current-images.env" | tail -n 1 | tr -d '\r')"
+          fi
+
+          if [ "$SPRING_SYSTEMD_ACTIVE" -eq 0 ] && \
+             { [ -z "$PREVIOUS_SPRING_IMAGE" ] || \
+               [ -z "$PREVIOUS_FASTAPI_IMAGE" ] || \
+               [ -z "$PREVIOUS_DEPLOY_SHA" ]; }; then
+            echo "Neither a complete systemd deployment nor a previous Docker deployment is available for rollback." >&2
+            exit 1
+          fi
+
+          export SPRING_IMAGE="peztz-spring:$DEPLOY_SHA"
+          export FASTAPI_IMAGE="peztz-fastapi:$DEPLOY_SHA"
+
+          CUTOVER_BEGAN=0
+          CONTAINERS_REPLACED=0
+
+          wait_for_public_endpoints() {
+            local attempt fastapi_health
+            for attempt in $(seq 1 36); do
+              fastapi_health="$(curl --fail --silent \
+                "http://127.0.0.1:8000/health" 2>/dev/null || true)"
+              if [ "$fastapi_health" = '{"status":"ok"}' ] && \
+                 curl --fail --silent \
+                   "http://127.0.0.1:8080/v3/api-docs" \
+                   --output /dev/null 2>/dev/null; then
+                return 0
+              fi
+
+              if [ "$attempt" -lt 36 ]; then
+                sleep 5
+              fi
+            done
+
+            return 1
+          }
+
+          finish() {
+            exit_code=$?
+            trap - EXIT
+
+            if [ "$exit_code" -ne 0 ]; then
+              echo "Production deployment failed. Collecting diagnostics..."
+              compose ps || true
+              compose logs --no-color --tail=200 spring fastapi || true
+              systemctl --no-pager --full status peztz-spring peztz-api || true
+
+              if [ "$CUTOVER_BEGAN" -eq 1 ]; then
+                if [ "$CONTAINERS_REPLACED" -eq 1 ]; then
+                  docker rm -f peztz-spring peztz-fastapi > /dev/null 2>&1 || true
+                fi
+
+                if [ "$SPRING_SYSTEMD_ACTIVE" -eq 1 ]; then
+                  echo "Restoring the previous systemd deployment..."
+                  if sudo -n systemctl enable --now peztz-spring peztz-api && \
+                     wait_for_public_endpoints; then
+                    echo "The previous systemd deployment was restored."
+                  else
+                    echo "Systemd rollback did not pass health checks." >&2
+                  fi
+                elif [ -n "$PREVIOUS_SPRING_IMAGE" ] && \
+                     [ -n "$PREVIOUS_FASTAPI_IMAGE" ] && \
+                     [ -n "$PREVIOUS_DEPLOY_SHA" ]; then
+                  echo "Restoring the previous Docker images..."
+                  export SPRING_IMAGE="$PREVIOUS_SPRING_IMAGE"
+                  export FASTAPI_IMAGE="$PREVIOUS_FASTAPI_IMAGE"
+                  if checkout_revision "$PREVIOUS_DEPLOY_SHA" && \
+                     compose up -d --force-recreate spring fastapi && \
+                     wait_for_public_endpoints; then
+                    echo "The previous Docker deployment was restored."
+                  else
+                    echo "Docker rollback did not pass health checks." >&2
+                    docker rm -f peztz-spring peztz-fastapi > /dev/null 2>&1 || true
+                    if sudo -n systemctl enable --now peztz-spring peztz-api && \
+                       wait_for_public_endpoints; then
+                      echo "The legacy systemd deployment was restored as a fallback."
+                    else
+                      echo "The emergency systemd fallback also failed." >&2
+                    fi
+                  fi
+                fi
+              fi
+            fi
+
+            exit "$exit_code"
+          }
+          trap finish EXIT
+
+          compose config > /dev/null
+          compose build spring fastapi
+
+          CUTOVER_BEGAN=1
+          if [ "$SPRING_SYSTEMD_ACTIVE" -eq 1 ]; then
+            sudo -n systemctl stop peztz-api peztz-spring
+          fi
+
+          CONTAINERS_REPLACED=1
+          compose up -d --force-recreate spring fastapi
+
+          if ! docker network inspect peztz-internal \
+            --format '{{range .Containers}}{{println .Name}}{{end}}' \
+            | grep -Fxq mediamtx; then
+            docker network connect peztz-internal mediamtx
+          fi
+
+          SPRING_HEALTH=""
+          FASTAPI_HEALTH=""
+          SPRING_API_STATUS=""
+          for attempt in $(seq 1 36); do
+            SPRING_HEALTH="$(docker inspect \
+              --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              peztz-spring 2>/dev/null || true)"
+            FASTAPI_HEALTH="$(curl --fail --silent --show-error \
+              "http://127.0.0.1:8000/health" 2>/dev/null || true)"
+            if curl --fail --silent --show-error \
+              "http://127.0.0.1:8080/v3/api-docs" \
+              --output /dev/null 2>/dev/null; then
+              SPRING_API_STATUS="ok"
+            else
+              SPRING_API_STATUS=""
+            fi
+
+            if [ "$SPRING_HEALTH" = "healthy" ] && \
+               [ "$FASTAPI_HEALTH" = '{"status":"ok"}' ] && \
+               [ -n "$SPRING_API_STATUS" ]; then
+              break
+            fi
+
+            if [ "$attempt" -lt 36 ]; then
+              sleep 5
+            fi
+          done
+
+          if [ "$SPRING_HEALTH" != "healthy" ] || \
+             [ "$FASTAPI_HEALTH" != '{"status":"ok"}' ] || \
+             [ -z "$SPRING_API_STATUS" ]; then
+            echo "Application health checks did not pass." >&2
+            exit 1
+          fi
+
+          if [ "$(docker port peztz-spring 8080/tcp)" != "0.0.0.0:8080" ] || \
+             [ "$(docker port peztz-fastapi 8000/tcp)" != "0.0.0.0:8000" ]; then
+            echo "Production containers are not bound to the expected public ports." >&2
+            exit 1
+          fi
+
+          docker exec peztz-spring \
+            bash -c "timeout 5 bash -c '</dev/tcp/fastapi/8000'"
+          docker exec peztz-fastapi \
+            python -c "import urllib.request; urllib.request.urlopen('http://spring:8080/v3/api-docs', timeout=5)"
+
+          FASTAPI_INTERNAL_API_KEY="$(dotenv_value FASTAPI_INTERNAL_API_KEY '')"
+          curl --fail --silent --show-error \
+            -H "X-Internal-Api-Key: $FASTAPI_INTERNAL_API_KEY" \
+            "http://127.0.0.1:8000/internal/cameras/deploy-smoke/status" \
+            > /dev/null
+
+          if [ "$(docker inspect --format '{{.Id}}' mediamtx)" != "$MEDIAMTX_ID" ] || \
+             [ "$(docker inspect --format '{{.State.StartedAt}}' mediamtx)" != \
+               "$MEDIAMTX_STARTED_AT" ] || \
+             [ "$(docker inspect --format '{{.State.Running}}' mediamtx)" != "true" ]; then
+            echo "MediaMTX was stopped or recreated during deployment." >&2
+            exit 1
+          fi
+
+          sudo -n systemctl disable peztz-spring peztz-api
+
+          if systemctl is-active --quiet peztz-spring || \
+             systemctl is-active --quiet peztz-api; then
+            echo "A legacy systemd service became active after Docker cutover." >&2
+            exit 1
+          fi
+
+          mkdir -p "$STATE_DIR"
+          umask 077
+          {
+            printf 'DEPLOY_SHA=%q\n' "$PREVIOUS_DEPLOY_SHA"
+            printf 'SPRING_IMAGE=%q\n' "$PREVIOUS_SPRING_IMAGE"
+            printf 'FASTAPI_IMAGE=%q\n' "$PREVIOUS_FASTAPI_IMAGE"
+          } > "$STATE_DIR/previous-images.env"
+          {
+            printf 'DEPLOY_SHA=%q\n' "$DEPLOY_SHA"
+            printf 'SPRING_IMAGE=%q\n' "$SPRING_IMAGE"
+            printf 'FASTAPI_IMAGE=%q\n' "$FASTAPI_IMAGE"
+          } > "$STATE_DIR/current-images.env"
+
+          compose ps spring fastapi
+          printf 'Production Docker deployment succeeded for %s.\n' "$DEPLOY_SHA"
+          REMOTE

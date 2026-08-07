@@ -10,8 +10,13 @@ on:
 
   workflow_dispatch:
 
+concurrency:
+  group: peztz-production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    if: vars.PEZTZ_DOCKER_PRODUCTION_ENABLED != 'true'
     runs-on: ubuntu-latest
 
     defaults:
