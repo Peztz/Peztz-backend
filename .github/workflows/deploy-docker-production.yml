@@ -1,6 +1,15 @@
 name: Deploy Docker Production to GCP
 
 on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "spring-server/**"
+      - "fastapi-stream-server/**"
+      - "infra/**"
+      - ".github/workflows/deploy-docker-production.yml"
+
   push:
     branches:
       - main
@@ -20,12 +29,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'push' && vars.PEZTZ_DOCKER_PRODUCTION_ENABLED == 'true')
+  validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
 
     steps:
       - name: Checkout exact revision
@@ -63,6 +69,15 @@ jobs:
           cd fastapi-stream-server
           python -m pytest -q
 
+  deploy:
+    needs: validate
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'push' && vars.PEZTZ_DOCKER_PRODUCTION_ENABLED == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
       - name: Prepare SSH key
         shell: bash
         run: |
@@ -180,7 +195,36 @@ jobs:
           CUTOVER_BEGAN=0
           CONTAINERS_REPLACED=0
 
-          wait_for_public_endpoints() {
+          wait_for_docker_endpoints() {
+            local attempt fastapi_health spring_health
+            for attempt in $(seq 1 36); do
+              fastapi_health="$(curl --fail --silent \
+                "http://127.0.0.1:8000/health" 2>/dev/null || true)"
+              spring_health=""
+              if curl --fail --silent \
+                "http://127.0.0.1:8080/actuator/health" \
+                --output /dev/null 2>/dev/null || \
+                 curl --fail --silent \
+                "http://127.0.0.1:8080/v3/api-docs" \
+                --output /dev/null 2>/dev/null; then
+                spring_health="ok"
+              fi
+
+              # /v3/api-docs keeps rollback compatible with the pre-Actuator image.
+              if [ "$fastapi_health" = '{"status":"ok"}' ] && \
+                 [ "$spring_health" = "ok" ]; then
+                return 0
+              fi
+
+              if [ "$attempt" -lt 36 ]; then
+                sleep 5
+              fi
+            done
+
+            return 1
+          }
+
+          wait_for_systemd_endpoints() {
             local attempt fastapi_health
             for attempt in $(seq 1 36); do
               fastapi_health="$(curl --fail --silent \
@@ -218,7 +262,7 @@ jobs:
                 if [ "$SPRING_SYSTEMD_ACTIVE" -eq 1 ]; then
                   echo "Restoring the previous systemd deployment..."
                   if sudo -n systemctl enable --now peztz-spring peztz-api && \
-                     wait_for_public_endpoints; then
+                     wait_for_systemd_endpoints; then
                     echo "The previous systemd deployment was restored."
                   else
                     echo "Systemd rollback did not pass health checks." >&2
@@ -231,13 +275,13 @@ jobs:
                   export FASTAPI_IMAGE="$PREVIOUS_FASTAPI_IMAGE"
                   if checkout_revision "$PREVIOUS_DEPLOY_SHA" && \
                      compose up -d --force-recreate spring fastapi && \
-                     wait_for_public_endpoints; then
+                     wait_for_docker_endpoints; then
                     echo "The previous Docker deployment was restored."
                   else
                     echo "Docker rollback did not pass health checks." >&2
                     docker rm -f peztz-spring peztz-fastapi > /dev/null 2>&1 || true
                     if sudo -n systemctl enable --now peztz-spring peztz-api && \
-                       wait_for_public_endpoints; then
+                       wait_for_systemd_endpoints; then
                       echo "The legacy systemd deployment was restored as a fallback."
                     else
                       echo "The emergency systemd fallback also failed." >&2
@@ -278,7 +322,7 @@ jobs:
             FASTAPI_HEALTH="$(curl --fail --silent --show-error \
               "http://127.0.0.1:8000/health" 2>/dev/null || true)"
             if curl --fail --silent --show-error \
-              "http://127.0.0.1:8080/v3/api-docs" \
+              "http://127.0.0.1:8080/actuator/health" \
               --output /dev/null 2>/dev/null; then
               SPRING_API_STATUS="ok"
             else
@@ -312,7 +356,7 @@ jobs:
           docker exec peztz-spring \
             bash -c "timeout 5 bash -c '</dev/tcp/fastapi/8000'"
           docker exec peztz-fastapi \
-            python -c "import urllib.request; urllib.request.urlopen('http://spring:8080/v3/api-docs', timeout=5)"
+            python -c "import urllib.request; urllib.request.urlopen('http://spring:8080/actuator/health', timeout=5)"
 
           FASTAPI_INTERNAL_API_KEY="$(dotenv_value FASTAPI_INTERNAL_API_KEY '')"
           curl --fail --silent --show-error \

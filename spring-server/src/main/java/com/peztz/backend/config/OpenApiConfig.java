@@ -21,10 +21,7 @@ public class OpenApiConfig {
 						.version("v1.0.0"))
 				.servers(List.of(
 						new Server()
-								.url("http://localhost:8080")
-								.description("로컬"),
-						new Server()
-								.url("http://34.50.7.78:8080")
-								.description("운영")));
+								.url("/")
+								.description("현재 접속 서버")));
 	}
 }

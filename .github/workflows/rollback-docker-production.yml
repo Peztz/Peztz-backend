@@ -102,6 +102,9 @@ jobs:
               fastapi_health="$(curl --fail --silent \
                 "http://127.0.0.1:8000/health" 2>/dev/null || true)"
               if curl --fail --silent \
+                "http://127.0.0.1:8080/actuator/health" \
+                --output /dev/null 2>/dev/null || \
+                 curl --fail --silent \
                 "http://127.0.0.1:8080/v3/api-docs" \
                 --output /dev/null 2>/dev/null; then
                 spring_api="ok"
@@ -109,6 +112,7 @@ jobs:
                 spring_api=""
               fi
 
+              # /v3/api-docs keeps rollback compatible with the pre-Actuator image.
               if [ "$spring_health" = "healthy" ] && \
                  [ "$fastapi_health" = '{"status":"ok"}' ] && \
                  [ "$spring_api" = "ok" ]; then
