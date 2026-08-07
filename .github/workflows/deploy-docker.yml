@@ -1,10 +1,14 @@
-name: Deploy Docker Compose to GCP
+name: Validate Docker Compose on GCP
 
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: peztz-production-deploy
+  cancel-in-progress: false
 
 jobs:
   deploy:

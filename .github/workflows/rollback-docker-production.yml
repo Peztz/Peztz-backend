@@ -1,0 +1,211 @@
+name: Roll Back Docker Production on GCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Rollback target
+        required: true
+        type: choice
+        options:
+          - previous_docker
+          - systemd
+      confirmation:
+        description: Type ROLLBACK to continue
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: peztz-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Validate confirmation
+        env:
+          CONFIRMATION: ${{ inputs.confirmation }}
+          DOCKER_PRODUCTION_ENABLED: ${{ vars.PEZTZ_DOCKER_PRODUCTION_ENABLED }}
+          ROLLBACK_TARGET: ${{ inputs.target }}
+        run: |
+          if [ "$CONFIRMATION" != "ROLLBACK" ]; then
+            echo "Rollback confirmation did not match ROLLBACK." >&2
+            exit 1
+          fi
+
+          if [ "$ROLLBACK_TARGET" = "systemd" ] && \
+             [ "$DOCKER_PRODUCTION_ENABLED" = "true" ]; then
+            echo "Set PEZTZ_DOCKER_PRODUCTION_ENABLED=false before rolling back to systemd." >&2
+            exit 1
+          fi
+
+      - name: Prepare SSH key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf "%s\n" "${{ secrets.GCP_SSH_KEY }}" > ~/.ssh/gcp_key
+          sed -i 's/\r$//' ~/.ssh/gcp_key
+          chmod 600 ~/.ssh/gcp_key
+          ssh-keygen -y -f ~/.ssh/gcp_key > /dev/null
+          ssh-keyscan -H "${{ secrets.GCP_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Roll back production
+        shell: bash
+        env:
+          ROLLBACK_TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/gcp_key \
+            -o IdentitiesOnly=yes \
+            "${{ secrets.GCP_USER }}@${{ secrets.GCP_HOST }}" \
+            "ROLLBACK_TARGET='${ROLLBACK_TARGET}' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          REPOSITORY_DIR="$HOME/Peztz-backend-docker"
+          cd "$REPOSITORY_DIR/infra"
+          test -f .env
+
+          STATE_DIR="$HOME/.peztz-deploy"
+
+          compose() {
+            docker compose --env-file .env "$@"
+          }
+
+          checkout_revision() {
+            revision="$1"
+            cd "$REPOSITORY_DIR"
+            if ! git cat-file -e "${revision}^{commit}" 2>/dev/null; then
+              git fetch --prune origin main
+            fi
+            git cat-file -e "${revision}^{commit}"
+            git checkout --detach "$revision"
+            cd infra
+          }
+
+          wait_for_docker() {
+            spring_health=""
+            fastapi_health=""
+            spring_api=""
+
+            for attempt in $(seq 1 36); do
+              spring_health="$(docker inspect \
+                --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+                peztz-spring 2>/dev/null || true)"
+              fastapi_health="$(curl --fail --silent \
+                "http://127.0.0.1:8000/health" 2>/dev/null || true)"
+              if curl --fail --silent \
+                "http://127.0.0.1:8080/v3/api-docs" \
+                --output /dev/null 2>/dev/null; then
+                spring_api="ok"
+              else
+                spring_api=""
+              fi
+
+              if [ "$spring_health" = "healthy" ] && \
+                 [ "$fastapi_health" = '{"status":"ok"}' ] && \
+                 [ "$spring_api" = "ok" ]; then
+                return 0
+              fi
+
+              if [ "$attempt" -lt 36 ]; then
+                sleep 5
+              fi
+            done
+
+            return 1
+          }
+
+          if [ "$ROLLBACK_TARGET" = "previous_docker" ]; then
+            test -f "$STATE_DIR/previous-images.env"
+            test -f "$STATE_DIR/current-images.env"
+
+            CURRENT_SPRING_IMAGE="$(docker inspect --format '{{.Config.Image}}' peztz-spring)"
+            CURRENT_FASTAPI_IMAGE="$(docker inspect --format '{{.Config.Image}}' peztz-fastapi)"
+            CURRENT_DEPLOY_SHA="$(sed -n 's/^DEPLOY_SHA=//p' \
+              "$STATE_DIR/current-images.env" | tail -n 1 | tr -d '\r')"
+
+            # The state file is written by the production deployment workflow.
+            source "$STATE_DIR/previous-images.env"
+            ROLLBACK_DEPLOY_SHA="${DEPLOY_SHA:-}"
+
+            if [ -z "$CURRENT_DEPLOY_SHA" ] || \
+               [ -z "$ROLLBACK_DEPLOY_SHA" ] || \
+               [ -z "${SPRING_IMAGE:-}" ] || \
+               [ -z "${FASTAPI_IMAGE:-}" ]; then
+              echo "Previous Docker deployment information is incomplete." >&2
+              exit 1
+            fi
+
+            docker image inspect "$SPRING_IMAGE" "$FASTAPI_IMAGE" > /dev/null
+            sudo -n systemctl disable --now peztz-api peztz-spring
+
+            export SPRING_IMAGE FASTAPI_IMAGE
+            if ! checkout_revision "$ROLLBACK_DEPLOY_SHA" || \
+               ! compose up -d --force-recreate spring fastapi || \
+               ! wait_for_docker; then
+              echo "Previous Docker deployment failed health checks; restoring current deployment." >&2
+              export SPRING_IMAGE="$CURRENT_SPRING_IMAGE"
+              export FASTAPI_IMAGE="$CURRENT_FASTAPI_IMAGE"
+              checkout_revision "$CURRENT_DEPLOY_SHA" || true
+              compose up -d --force-recreate spring fastapi || true
+              wait_for_docker || true
+              exit 1
+            fi
+
+            umask 077
+            {
+              printf 'DEPLOY_SHA=%q\n' "$CURRENT_DEPLOY_SHA"
+              printf 'SPRING_IMAGE=%q\n' "$CURRENT_SPRING_IMAGE"
+              printf 'FASTAPI_IMAGE=%q\n' "$CURRENT_FASTAPI_IMAGE"
+            } > "$STATE_DIR/previous-images.env"
+            {
+              printf 'DEPLOY_SHA=%q\n' "$ROLLBACK_DEPLOY_SHA"
+              printf 'SPRING_IMAGE=%q\n' "$SPRING_IMAGE"
+              printf 'FASTAPI_IMAGE=%q\n' "$FASTAPI_IMAGE"
+            } > "$STATE_DIR/current-images.env"
+
+            compose ps spring fastapi
+            echo "Rolled back to the previous Docker images."
+            exit 0
+          fi
+
+          if [ "$ROLLBACK_TARGET" = "systemd" ]; then
+            test -f "$STATE_DIR/current-images.env"
+
+            CURRENT_SPRING_IMAGE="$(docker inspect --format '{{.Config.Image}}' peztz-spring)"
+            CURRENT_FASTAPI_IMAGE="$(docker inspect --format '{{.Config.Image}}' peztz-fastapi)"
+            CURRENT_DEPLOY_SHA="$(sed -n 's/^DEPLOY_SHA=//p' \
+              "$STATE_DIR/current-images.env" | tail -n 1 | tr -d '\r')"
+
+            docker rm -f peztz-spring peztz-fastapi > /dev/null
+
+            if sudo -n systemctl enable --now peztz-spring peztz-api && \
+               systemctl is-active --quiet peztz-spring && \
+               systemctl is-active --quiet peztz-api && \
+               curl --fail --silent "http://127.0.0.1:8080/v3/api-docs" --output /dev/null && \
+               [ "$(curl --fail --silent "http://127.0.0.1:8000/health")" = '{"status":"ok"}' ]; then
+              echo "Rolled back to the legacy systemd services."
+              exit 0
+            fi
+
+            echo "Systemd rollback failed; restoring the current Docker images." >&2
+            sudo -n systemctl disable --now peztz-api peztz-spring || true
+            export SPRING_IMAGE="$CURRENT_SPRING_IMAGE"
+            export FASTAPI_IMAGE="$CURRENT_FASTAPI_IMAGE"
+            checkout_revision "$CURRENT_DEPLOY_SHA" || true
+            compose up -d --force-recreate spring fastapi || true
+            wait_for_docker || true
+            exit 1
+          fi
+
+          echo "Unsupported rollback target: $ROLLBACK_TARGET" >&2
+          exit 1
+          REMOTE
