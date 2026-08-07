@@ -70,6 +70,10 @@ PEZTZ_DOCKER_PRODUCTION_ENABLED=true
 `Deploy Docker Production to GCP`가 자동 실행됩니다. 수동 실행도 지원하지만 운영
 자동배포 검증은 `main`의 관련 경로 변경으로 확인합니다.
 
+같은 경로를 변경한 Pull Request에서는 `validate` 작업만 실행하여 Spring과 FastAPI
+테스트를 먼저 확인합니다. PR 검증에서는 GCP에 접속하거나 운영 컨테이너를 교체하지
+않습니다. `main` 반영 후에는 검증이 통과한 경우에만 `deploy` 작업이 이어집니다.
+
 배포 전에 다음 조건을 충족해야 합니다.
 
 - GCP 배포 저장소에 추적 중인 로컬 변경사항이 없어야 합니다.
@@ -81,6 +85,10 @@ PEZTZ_DOCKER_PRODUCTION_ENABLED=true
 교체합니다. 컨테이너 상태, 공개 API, 컨테이너 간 통신과 MediaMTX 상태를 검사하며,
 실패하면 직전 Docker 이미지 또는 비상용 systemd 서비스로 자동 복구합니다. 성공한
 배포의 커밋과 이미지 정보는 서버의 `~/.peztz-deploy`에 기록합니다.
+
+Spring 컨테이너와 Docker 배포 상태 확인에는 `/actuator/health`를 사용합니다. 이전
+Actuator 도입 전 Docker 이미지와 systemd 서비스로 복구할 때만 `/v3/api-docs`를
+호환 확인 경로로 사용합니다.
 
 ### 운영 롤백
 
