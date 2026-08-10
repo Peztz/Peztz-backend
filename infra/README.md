@@ -1,12 +1,14 @@
-# Peztz Docker Compose
+# Peztz Application Docker Compose
 
-이 Compose는 GCP VM에서 Spring Boot, FastAPI, MediaMTX를 함께 관리합니다.
-PostgreSQL은 기존 GCP 호스트 설치를 그대로 사용하며 Compose에 포함하지 않습니다.
+이 Compose는 GCP VM에서 Spring Boot와 FastAPI만 관리합니다. MediaMTX는 애플리케이션
+배포와 분리된 [MediaMTX Compose](mediamtx/README.md)로 관리합니다. PostgreSQL은 기존
+GCP 호스트 설치를 그대로 사용하며 Compose에 포함하지 않습니다.
 
 ## 운영 상태
 
 - 2026-08-07 기준 Spring Boot와 FastAPI 운영 서비스를 Docker Compose로 전환했습니다.
 - `main` 브랜치의 Spring, FastAPI 또는 `infra` 변경은 Docker 운영 자동배포로 반영됩니다.
+- MediaMTX는 별도 Compose로 관리하며 애플리케이션 자동배포에서 재시작하지 않습니다.
 - 기존 systemd 서비스는 비상복구용으로 비활성화된 상태로 유지합니다.
 - 운영 롤백은 직전 Docker 이미지 복구를 우선으로 사용합니다.
 
@@ -17,11 +19,10 @@ PostgreSQL은 기존 GCP 호스트 설치를 그대로 사용하며 Compose에 �
 ```bash
 cd infra
 cp .env.example .env
-cp mediamtx/mediamtx.yml.example mediamtx/mediamtx.yml
 ```
 
-`.env`에는 DB 비밀번호와 내부 API 키를 입력합니다. `mediamtx.yml`에는 GCP 공인 IP,
-송출 계정, 송출 비밀번호를 입력합니다. 두 파일은 Git에 커밋하지 않습니다.
+`.env`에는 DB 비밀번호와 내부 API 키를 입력합니다. 이 파일은 Git에 커밋하지 않습니다.
+MediaMTX 설정과 실행 방법은 [MediaMTX README](mediamtx/README.md)를 참고합니다.
 
 GCP 운영 서버의 `infra/.env`는 다음 주소와 포트를 사용합니다.
 
@@ -36,15 +37,15 @@ FASTAPI_HOST_PORT=8000
 
 ```bash
 docker compose config
-docker compose build
+docker compose build spring fastapi
 ```
 
 ## 실행
 
 ```bash
-docker compose up -d
-docker compose ps
-docker compose logs -f
+docker compose up -d spring fastapi
+docker compose ps spring fastapi
+docker compose logs -f spring fastapi
 ```
 
 개별 로그는 서비스 이름으로 확인합니다.
@@ -52,7 +53,6 @@ docker compose logs -f
 ```bash
 docker compose logs -f spring
 docker compose logs -f fastapi
-docker compose logs -f mediamtx
 ```
 
 ## GitHub Actions 배포
@@ -117,6 +117,7 @@ Spring/FastAPI -> 호스트 PostgreSQL: host.docker.internal:5432
 
 - PostgreSQL이 Docker 브리지 네트워크의 접속을 허용해야 합니다.
 - 운영 배포는 기존 `mediamtx` 컨테이너를 중지하거나 재생성하지 않습니다.
+- MediaMTX 실행과 로그 확인에는 `infra/mediamtx/docker-compose.yml`을 사용합니다.
 - 기존 `peztz-spring`, `peztz-api` systemd 서비스는 비활성화 상태로 유지합니다.
 - systemd 비상복구를 실행하기 전에는 `PEZTZ_DOCKER_PRODUCTION_ENABLED=false`로 변경합니다.
 - `docker compose down -v`는 사용하지 않습니다.

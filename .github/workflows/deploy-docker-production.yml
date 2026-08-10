@@ -35,10 +35,10 @@ jobs:
 
     steps:
       - name: Checkout exact revision
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -55,7 +55,7 @@ jobs:
           ./gradlew test --no-daemon
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -68,6 +68,20 @@ jobs:
           python -m pip install -r fastapi-stream-server/requirements-dev.txt
           cd fastapi-stream-server
           python -m pytest -q
+
+      - name: Validate Docker Compose files
+        env:
+          DB_PASSWORD: compose-validation
+          PEZTZ_INTERNAL_API_KEY: compose-validation
+          FASTAPI_INTERNAL_API_KEY: compose-validation
+          DEVICE_API_KEY: compose-validation
+          MEDIAMTX_PLAYBACK_BASE_URL: http://127.0.0.1:8889
+          MEDIAMTX_STREAM_PATH_TEMPLATE: camera-{camera_id}
+          MEDIAMTX_CONFIG_PATH: /tmp/mediamtx.yml
+          MEDIAMTX_RECORDINGS_PATH: /tmp/recordings
+        run: |
+          docker compose -f infra/docker-compose.yml config --quiet
+          docker compose -f infra/mediamtx/docker-compose.yml config --quiet
 
   deploy:
     needs: validate
@@ -123,7 +137,6 @@ jobs:
           checkout_revision "$DEPLOY_SHA"
 
           test -f .env
-          test -f mediamtx/mediamtx.yml
 
           dotenv_value() {
             key="$1"
