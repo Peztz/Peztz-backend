@@ -13,11 +13,16 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
 
+import com.peztz.backend.camera.dto.CameraResponse;
+import com.peztz.backend.integration.fastapi.CameraRuntimeStatusResponse;
+import com.peztz.backend.integration.fastapi.FastApiCameraClient;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionResponse;
 import com.peztz.backend.facility.dto.FacilityCageUpdateRequest;
+import com.peztz.backend.facility.dto.FacilityCameraUpsertRequest;
 import com.peztz.backend.facility.dto.FacilityOwnerPetResponse;
 import com.peztz.backend.facility.dto.FacilityRequest;
 import com.peztz.backend.facility.dto.FacilityResponse;
@@ -43,6 +48,7 @@ public class FacilityController {
 
 	private final FacilityService facilityService;
 	private final FacilityAdmissionService facilityAdmissionService;
+	private final FastApiCameraClient fastApiCameraClient;
 
 	@Operation(summary = "시설 목록 조회", responses = {
 			@ApiResponse(responseCode = "200", description = "조회 성공",
@@ -138,6 +144,32 @@ public class FacilityController {
 			@PathVariable UUID cageId,
 			@Valid @RequestBody FacilityCageUpdateRequest request) {
 		return ResponseEntity.ok(facilityAdmissionService.updateCage(authorization, facilityId, cageId, request));
+	}
+
+	@GetMapping("/{facilityId}/cameras")
+	public ResponseEntity<List<CameraResponse>> findCameras(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID facilityId) {
+		return ResponseEntity.ok(facilityAdmissionService.findCameras(authorization, facilityId));
+	}
+
+	@PutMapping("/{facilityId}/cages/{cageId}/camera")
+	public ResponseEntity<CameraResponse> upsertCamera(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID facilityId,
+			@PathVariable UUID cageId,
+			@Valid @RequestBody FacilityCameraUpsertRequest request) {
+		return ResponseEntity.ok(
+				facilityAdmissionService.upsertCamera(authorization, facilityId, cageId, request));
+	}
+
+	@GetMapping("/{facilityId}/cameras/{cameraId}/runtime-status")
+	public ResponseEntity<CameraRuntimeStatusResponse> getCameraRuntimeStatus(
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID facilityId,
+			@PathVariable UUID cameraId) {
+		facilityAdmissionService.getFacilityCamera(authorization, facilityId, cameraId);
+		return ResponseEntity.ok(fastApiCameraClient.getStatus(cameraId));
 	}
 
 	@Operation(

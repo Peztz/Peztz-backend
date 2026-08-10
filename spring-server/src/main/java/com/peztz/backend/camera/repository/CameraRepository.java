@@ -12,7 +12,11 @@ public interface CameraRepository extends JpaRepository<Camera, UUID> {
 
 	List<Camera> findByCageUserIdOrderByCreatedAtDesc(UUID ownerId);
 
+	List<Camera> findByCageFacilityIdOrderByCreatedAtDesc(UUID facilityId);
+
 	Optional<Camera> findByIdAndCageUserId(UUID id, UUID ownerId);
+
+	Optional<Camera> findByCageId(UUID cageId);
 
 	boolean existsByCageId(UUID cageId);
 }

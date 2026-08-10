@@ -20,10 +20,15 @@ import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.cage.dto.CageResponse;
 import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.cage.repository.CageRepository;
+import com.peztz.backend.camera.dto.CameraResponse;
+import com.peztz.backend.camera.entity.Camera;
+import com.peztz.backend.camera.repository.CameraRepository;
+import com.peztz.backend.camera.service.CameraService;
 import com.peztz.backend.device.repository.RaspberryPiRepository;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionCreateRequest;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionDetailResponse;
 import com.peztz.backend.facility.dto.FacilityAdmissionSessionResponse;
+import com.peztz.backend.facility.dto.FacilityCameraUpsertRequest;
 import com.peztz.backend.facility.dto.FacilityCageUpdateRequest;
 import com.peztz.backend.facility.dto.FacilityOwnerPetResponse;
 import com.peztz.backend.pet.entity.Pet;
@@ -42,6 +47,8 @@ public class FacilityAdmissionService {
 	private final AppUserRepository appUserRepository;
 	private final PetRepository petRepository;
 	private final CageRepository cageRepository;
+	private final CameraRepository cameraRepository;
+	private final CameraService cameraService;
 	private final RaspberryPiRepository raspberryPiRepository;
 	private final AdmissionSessionRepository admissionSessionRepository;
 	private final FacilityService facilityService;
@@ -124,6 +131,48 @@ public class FacilityAdmissionService {
 		return toCageResponse(cage);
 	}
 
+	@Transactional(readOnly = true)
+	public List<CameraResponse> findCameras(String authorization, UUID facilityId) {
+		requireFacilityManager(authorization, facilityId);
+		return cameraRepository.findByCageFacilityIdOrderByCreatedAtDesc(facilityId).stream()
+				.map(cameraService::toResponse)
+				.toList();
+	}
+
+	@Transactional
+	public CameraResponse upsertCamera(
+			String authorization,
+			UUID facilityId,
+			UUID cageId,
+			FacilityCameraUpsertRequest request) {
+		requireCageUpdateManager(authorization, facilityId);
+		Cage cage = findFacilityCage(facilityId, cageId);
+		Camera camera = cameraRepository.findByCageId(cageId)
+				.orElseGet(() -> Camera.builder()
+						.cage(cage)
+						.status(CameraService.STATUS_REGISTERED)
+						.streamStatus(CameraService.STREAM_STATUS_IDLE)
+						.build());
+
+		camera.setName(request.name().trim());
+		return cameraService.toResponse(cameraRepository.save(camera));
+	}
+
+	@Transactional(readOnly = true)
+	public Camera getFacilityCamera(
+			String authorization,
+			UUID facilityId,
+			UUID cameraId) {
+		requireFacilityManager(authorization, facilityId);
+		Camera camera = cameraRepository.findById(cameraId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Camera not found"));
+		if (camera.getCage().getFacility() == null
+				|| !facilityId.equals(camera.getCage().getFacility().getId())) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Camera not found");
+		}
+		return camera;
+	}
+
 	@Transactional
 	public FacilityAdmissionSessionDetailResponse endAdmissionSession(
 			String authorization,
@@ -168,6 +217,15 @@ public class FacilityAdmissionService {
 		String normalizedEmail = ownerEmail.trim().toLowerCase(Locale.ROOT);
 		return appUserRepository.findByEmail(normalizedEmail)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Owner not found"));
+	}
+
+	private Cage findFacilityCage(UUID facilityId, UUID cageId) {
+		Cage cage = cageRepository.findById(cageId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
+		if (cage.getFacility() == null || !facilityId.equals(cage.getFacility().getId())) {
+			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cage does not belong to facility");
+		}
+		return cage;
 	}
 
 	private String normalizeStatusOrDefault(String status) {
