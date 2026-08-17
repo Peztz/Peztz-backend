@@ -13,6 +13,7 @@ import com.peztz.backend.smartthings.service.SmartThingsService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -23,6 +24,7 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/smartthings")
 @RequiredArgsConstructor
 @Tag(name = "스마트싱스", description = "스마트싱스 장치 조회 API")
+@SecurityRequirement(name = "bearerAuth")
 public class SmartThingsController {
 
 	private final SmartThingsService smartThingsService;
@@ -35,7 +37,7 @@ public class SmartThingsController {
 	})
 	@GetMapping("/devices")
 	public ResponseEntity<SmartThingsDeviceListResponse> findDevices(
-			@Parameter(description = "PEZTZ Bearer 인증 토큰", example = "Bearer sample-token", required = true)
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization) {
 		return ResponseEntity.ok(smartThingsService.findDevices(authorization));
 	}
@@ -49,7 +51,7 @@ public class SmartThingsController {
 	})
 	@GetMapping("/devices/{deviceId}/status")
 	public ResponseEntity<SmartThingsDeviceStatusResponse> getDeviceStatus(
-			@Parameter(description = "PEZTZ Bearer 인증 토큰", example = "Bearer sample-token", required = true)
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@Parameter(description = "스마트싱스 장치 ID", required = true)
 			@PathVariable String deviceId) {

@@ -23,6 +23,8 @@ import com.peztz.backend.smartthings.dto.SmartThingsMappedDeviceResponse;
 import com.peztz.backend.smartthings.dto.SmartThingsSyncResponse;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,7 @@ import lombok.RequiredArgsConstructor;
 @RequestMapping("/api/smartthings")
 @RequiredArgsConstructor
 @Tag(name = "스마트싱스 케이지 센서", description = "스마트싱스 센서와 케이지 연결 및 측정값 조회 API")
+@SecurityRequirement(name = "bearerAuth")
 public class SmartThingsSensorController {
 
 	private final SmartThingsDeviceService deviceService;
@@ -40,6 +43,7 @@ public class SmartThingsSensorController {
 			description = "스마트싱스에 등록된 센서 ID를 케이지와 연결하거나 기존 연결 정보를 갱신합니다.")
 	@PostMapping("/cages/{cageId}/devices")
 	public ResponseEntity<SmartThingsMappedDeviceResponse> register(
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable UUID cageId,
 			@Valid @RequestBody SmartThingsDeviceRegistrationRequest request) {
@@ -51,6 +55,7 @@ public class SmartThingsSensorController {
 			description = "케이지에 연결된 활성 센서와 배터리, 온라인 상태 및 마지막 확인시간을 조회합니다.")
 	@GetMapping("/cages/{cageId}/devices")
 	public ResponseEntity<List<SmartThingsMappedDeviceResponse>> findDevices(
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable UUID cageId) {
 		return ResponseEntity.ok(deviceService.findByCage(authorization, cageId));
@@ -61,6 +66,7 @@ public class SmartThingsSensorController {
 			description = "스마트싱스에서 센서의 온라인 상태와 최신 측정값을 즉시 조회하여 저장합니다.")
 	@PostMapping("/devices/{deviceId}/sync")
 	public ResponseEntity<SmartThingsSyncResponse> sync(
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable String deviceId) {
 		return ResponseEntity.ok(deviceService.sync(authorization, deviceId));
@@ -71,6 +77,7 @@ public class SmartThingsSensorController {
 			description = "케이지에 연결된 센서의 속성별 최신 측정값을 조회합니다.")
 	@GetMapping("/cages/{cageId}/readings/latest")
 	public ResponseEntity<CageSensorLatestResponse> findLatest(
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable UUID cageId) {
 		return ResponseEntity.ok(deviceService.findLatest(authorization, cageId));
@@ -81,6 +88,7 @@ public class SmartThingsSensorController {
 			description = "케이지의 센서 측정 이력을 최신순으로 조회하며 기간과 조회 개수를 지정할 수 있습니다.")
 	@GetMapping("/cages/{cageId}/readings")
 	public ResponseEntity<List<SensorReadingResponse>> findReadings(
+			@Parameter(hidden = true)
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable UUID cageId,
 			@RequestParam(required = false)
