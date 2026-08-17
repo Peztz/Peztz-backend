@@ -1,0 +1,19 @@
+{
+  "components": {
+    "main": {
+      "contactSensor": {
+        "contact": {
+          "value": "closed",
+          "timestamp": "2026-08-16T04:43:37.999Z"
+        }
+      },
+      "battery": {
+        "battery": {
+          "value": 87,
+          "unit": "%",
+          "timestamp": "2026-08-16T04:43:37.999Z"
+        }
+      }
+    }
+  }
+}

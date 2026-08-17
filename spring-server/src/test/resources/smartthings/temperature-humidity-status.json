@@ -1,0 +1,27 @@
+{
+  "components": {
+    "main": {
+      "temperatureMeasurement": {
+        "temperature": {
+          "value": 24.6,
+          "unit": "C",
+          "timestamp": "2026-08-16T04:46:00Z"
+        }
+      },
+      "relativeHumidityMeasurement": {
+        "humidity": {
+          "value": 58.2,
+          "unit": "%",
+          "timestamp": "2026-08-16T04:46:00Z"
+        }
+      },
+      "battery": {
+        "battery": {
+          "value": 95,
+          "unit": "%",
+          "timestamp": "2026-08-16T04:46:00Z"
+        }
+      }
+    }
+  }
+}

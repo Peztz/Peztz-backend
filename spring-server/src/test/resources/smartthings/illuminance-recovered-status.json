@@ -1,0 +1,20 @@
+{
+  "components": {
+    "main": {
+      "illuminanceMeasurement": {
+        "illuminance": {
+          "value": 120,
+          "unit": "lux",
+          "timestamp": "2026-08-16T04:45:47.514Z"
+        }
+      },
+      "battery": {
+        "battery": {
+          "value": 89,
+          "unit": "%",
+          "timestamp": "2026-08-16T04:45:47.514Z"
+        }
+      }
+    }
+  }
+}

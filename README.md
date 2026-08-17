@@ -44,6 +44,9 @@ Raspberry Pi Camera Module 기반 MJPEG 스트림과 `/video/*` 프록시 API는
 
 Spring Boot 실행 전 운영 PostgreSQL에 [마이그레이션 SQL](docs/sql/peztz_domain_migration.sql)을 적용해야 합니다.
 
+SmartThings 케이지 센서 설정과 API 호출 순서는
+[SmartThings 센서 연동 문서](docs/SMARTTHINGS_SENSOR_INTEGRATION.md)를 참고하세요.
+
 환경변수로 DB 연결 정보와 내부 API 키를 설정하세요. RTSP 주소·계정·비밀번호는 Spring 응답이나 저장소에 두지 않습니다.
 
 프론트엔드 연동 내용은 [FRONTEND_API_GUIDE.md](docs/FRONTEND_API_GUIDE.md)를 참고하세요.
