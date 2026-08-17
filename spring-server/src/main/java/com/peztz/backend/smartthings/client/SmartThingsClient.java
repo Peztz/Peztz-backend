@@ -45,6 +45,10 @@ public class SmartThingsClient {
 		return get("/devices/{deviceId}/status", accessToken, deviceId);
 	}
 
+	public JsonNode getDeviceHealth(String accessToken, String deviceId) {
+		return get("/devices/{deviceId}/health", accessToken, deviceId);
+	}
+
 	private JsonNode get(String path, String accessToken, String deviceId) {
 		Instant startedAt = Instant.now();
 		String endpoint = deviceId == null ? path : path.replace("{deviceId}", safeDeviceId(deviceId));

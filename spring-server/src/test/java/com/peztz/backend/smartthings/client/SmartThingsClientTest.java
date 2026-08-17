@@ -106,6 +106,25 @@ class SmartThingsClientTest {
 	}
 
 	@Test
+	void parsesDeviceHealthResponse() {
+		server.expect(once(), requestTo(BASE_URL + "/devices/device-1/health"))
+				.andExpect(method(HttpMethod.GET))
+				.andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer " + ACCESS_TOKEN))
+				.andRespond(withSuccess("""
+						{
+						  "deviceId": "device-1",
+						  "state": "ONLINE",
+						  "lastUpdatedDate": "2026-08-17T00:00:00Z"
+						}
+						""", MediaType.APPLICATION_JSON));
+
+		JsonNode response = client.getDeviceHealth(ACCESS_TOKEN, "device-1");
+
+		assertThat(response.path("state").asText()).isEqualTo("ONLINE");
+		server.verify();
+	}
+
+	@Test
 	void mapsSmartThings401() {
 		expectStatus(HttpStatus.UNAUTHORIZED);
 
