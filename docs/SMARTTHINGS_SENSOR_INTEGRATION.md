@@ -46,13 +46,14 @@ No migration was applied automatically by the application or by the test suite.
 
 ```text
 SMARTTHINGS_ACCESS_TOKEN=<SmartThings PAT>
+SMARTTHINGS_LOCATION_ID=<SmartThings project location ID>
 SMARTTHINGS_POLLING_ENABLED=false
 SMARTTHINGS_POLLING_INTERVAL_MS=60000
 SMARTTHINGS_LOW_LIGHT_THRESHOLD_LUX=50
 ```
 
 For Docker Compose, put the real values in the Git-ignored `infra/.env` file.
-The Compose configuration passes all four settings to the Spring container.
+The Compose configuration passes these settings to the Spring container.
 After replacing an expired PAT or changing the polling settings, recreate the
 Spring container so that it reads the new environment:
 
@@ -70,6 +71,15 @@ Git, frontend code, or API request bodies. The current PAT approach is suitable
 for development/demo use. Newly issued PATs expire after 24 hours, so replace
 the value in `infra/.env` and recreate the Spring container before a demo.
 Multi-customer production onboarding should use SmartThings OAuth.
+
+The device-list API sends `SMARTTHINGS_LOCATION_ID` as the SmartThings
+`locationId` query parameter. This prevents devices from another personal or
+shared SmartThings location from appearing in the PEZTZ device list. The
+verified project location ID is `813afc24-6a5d-4106-9630-47c69ff6f9d7`.
+Responses expose only the device fields required by PEZTZ and do not include
+the original SmartThings `raw` payload, which may contain private hub or
+network metadata. Direct status lookup also checks the device metadata first
+and returns `404 Not Found` when the device belongs to another location.
 
 ## API sequence
 

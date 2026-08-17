@@ -11,6 +11,7 @@ public class SmartThingsProperties {
 
 	private String baseUrl = "https://api.smartthings.com/v1";
 	private String accessToken = "";
+	private String locationId = "";
 	private BigDecimal lowLightThresholdLux = BigDecimal.valueOf(50);
 
 	public String getBaseUrl() {
@@ -27,6 +28,14 @@ public class SmartThingsProperties {
 
 	public void setAccessToken(String accessToken) {
 		this.accessToken = accessToken;
+	}
+
+	public String getLocationId() {
+		return locationId;
+	}
+
+	public void setLocationId(String locationId) {
+		this.locationId = locationId;
 	}
 
 	public BigDecimal getLowLightThresholdLux() {

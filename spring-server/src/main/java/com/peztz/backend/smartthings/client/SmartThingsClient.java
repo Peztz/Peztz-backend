@@ -37,24 +37,28 @@ public class SmartThingsClient {
 		this.objectMapper = objectMapper;
 	}
 
-	public JsonNode getDevices(String accessToken) {
-		return get("/devices", accessToken, null);
+	public JsonNode getDevices(String accessToken, String locationId) {
+		return get("/devices", accessToken, null, locationId);
+	}
+
+	public JsonNode getDevice(String accessToken, String deviceId) {
+		return get("/devices/{deviceId}", accessToken, deviceId, null);
 	}
 
 	public JsonNode getDeviceStatus(String accessToken, String deviceId) {
-		return get("/devices/{deviceId}/status", accessToken, deviceId);
+		return get("/devices/{deviceId}/status", accessToken, deviceId, null);
 	}
 
 	public JsonNode getDeviceHealth(String accessToken, String deviceId) {
-		return get("/devices/{deviceId}/health", accessToken, deviceId);
+		return get("/devices/{deviceId}/health", accessToken, deviceId, null);
 	}
 
-	private JsonNode get(String path, String accessToken, String deviceId) {
+	private JsonNode get(String path, String accessToken, String deviceId, String locationId) {
 		Instant startedAt = Instant.now();
 		String endpoint = deviceId == null ? path : path.replace("{deviceId}", safeDeviceId(deviceId));
 		try {
 			return restClient.get()
-					.uri(uriBuilder -> buildUri(uriBuilder, path, deviceId))
+					.uri(uriBuilder -> buildUri(uriBuilder, path, deviceId, locationId))
 					.accept(MediaType.APPLICATION_JSON)
 					.headers(headers -> headers.setBearerAuth(accessToken))
 					.exchange((request, response) -> {
@@ -86,9 +90,13 @@ public class SmartThingsClient {
 		}
 	}
 
-	private URI buildUri(org.springframework.web.util.UriBuilder uriBuilder, String path, String deviceId) {
+	private URI buildUri(
+			org.springframework.web.util.UriBuilder uriBuilder,
+			String path,
+			String deviceId,
+			String locationId) {
 		if (deviceId == null) {
-			return uriBuilder.path(path).build();
+			return uriBuilder.path(path).queryParam("locationId", locationId).build();
 		}
 		return uriBuilder.path(path).build(deviceId);
 	}

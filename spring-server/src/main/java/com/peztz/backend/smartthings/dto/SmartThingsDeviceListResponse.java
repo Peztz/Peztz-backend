@@ -10,6 +10,5 @@ import io.swagger.v3.oas.annotations.media.Schema;
 public record SmartThingsDeviceListResponse(
 		List<SmartThingsDeviceResponse> items,
 		JsonNode paging,
-		JsonNode links,
-		JsonNode raw) {
+		JsonNode links) {
 }

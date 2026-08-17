@@ -1,6 +1,7 @@
 package com.peztz.backend.smartthings.controller;
 
 import static org.hamcrest.Matchers.hasSize;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -31,6 +32,7 @@ class SmartThingsControllerTest {
 
 	private static final String PEZTZ_TOKEN = "Bearer peztz-token";
 	private static final String SMARTTHINGS_TOKEN = "smartthings-token";
+	private static final String LOCATION_ID = "813afc24-6a5d-4106-9630-47c69ff6f9d7";
 
 	private AuthService authService;
 	private SmartThingsClient smartThingsClient;
@@ -44,6 +46,7 @@ class SmartThingsControllerTest {
 		smartThingsClient = Mockito.mock(SmartThingsClient.class);
 		properties = new SmartThingsProperties();
 		properties.setAccessToken(SMARTTHINGS_TOKEN);
+		properties.setLocationId(LOCATION_ID);
 		objectMapper = new ObjectMapper();
 		SmartThingsService service = new SmartThingsService(authService, smartThingsClient, properties);
 		mockMvc = MockMvcBuilders.standaloneSetup(new SmartThingsController(service))
@@ -89,14 +92,34 @@ class SmartThingsControllerTest {
 	}
 
 	@Test
+	void rejectsMissingSmartThingsLocationAfterPeztzAuthorization() throws Exception {
+		properties.setLocationId("");
+		when(authService.requireUser(PEZTZ_TOKEN)).thenReturn(user("ADMIN"));
+
+		mockMvc.perform(get("/api/smartthings/devices")
+						.header("Authorization", PEZTZ_TOKEN))
+				.andExpect(status().isServiceUnavailable())
+				.andExpect(jsonPath("$.code").value("SMARTTHINGS_NOT_CONFIGURED"));
+
+		verifyNoInteractions(smartThingsClient);
+	}
+
+	@Test
 	void allowsAdminRole() throws Exception {
 		when(authService.requireUser(PEZTZ_TOKEN)).thenReturn(user("ADMIN"));
-		when(smartThingsClient.getDevices(SMARTTHINGS_TOKEN)).thenReturn(objectMapper.readTree("""
+		when(smartThingsClient.getDevices(SMARTTHINGS_TOKEN, LOCATION_ID)).thenReturn(objectMapper.readTree("""
 				{
 				  "items": [
-				    {"deviceId": "device-1", "name": "sensor", "label": "Sensor", "manufacturerName": "SmartThings"}
+				    {
+				      "deviceId": "device-1",
+				      "name": "sensor",
+				      "label": "Sensor",
+				      "manufacturerName": "SmartThings",
+				      "sensitiveMetadata": "must-not-be-returned"
+				    }
 				  ],
-				  "paging": {"next": "cursor"}
+				  "paging": {"next": "cursor"},
+				  "sensitiveMetadata": "must-not-be-returned"
 				}
 				"""));
 
@@ -105,14 +128,22 @@ class SmartThingsControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items", hasSize(1)))
 				.andExpect(jsonPath("$.items[0].deviceId").value("device-1"))
-				.andExpect(jsonPath("$.paging.next").value("cursor"));
+				.andExpect(jsonPath("$.paging.next").value("cursor"))
+				.andExpect(jsonPath("$.items[0].raw").doesNotExist())
+				.andExpect(jsonPath("$.raw").doesNotExist());
 
-		verify(smartThingsClient).getDevices(SMARTTHINGS_TOKEN);
+		verify(smartThingsClient).getDevices(SMARTTHINGS_TOKEN, LOCATION_ID);
 	}
 
 	@Test
 	void allowsFacilityManagerRoleForStatusLookup() throws Exception {
 		when(authService.requireUser(PEZTZ_TOKEN)).thenReturn(user("FACILITY_MANAGER"));
+		when(smartThingsClient.getDevice(SMARTTHINGS_TOKEN, "device-1")).thenReturn(objectMapper.readTree("""
+				{
+				  "deviceId": "device-1",
+				  "locationId": "813afc24-6a5d-4106-9630-47c69ff6f9d7"
+				}
+				"""));
 		when(smartThingsClient.getDeviceStatus(SMARTTHINGS_TOKEN, "device-1")).thenReturn(objectMapper.readTree("""
 				{
 				  "components": {
@@ -129,9 +160,30 @@ class SmartThingsControllerTest {
 						.header("Authorization", PEZTZ_TOKEN))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.deviceId").value("device-1"))
-				.andExpect(jsonPath("$.components.main.customCapability.customAttribute.value").value("preserved"));
+				.andExpect(jsonPath("$.components.main.customCapability.customAttribute.value").value("preserved"))
+				.andExpect(jsonPath("$.raw").doesNotExist());
 
+		verify(smartThingsClient).getDevice(SMARTTHINGS_TOKEN, "device-1");
 		verify(smartThingsClient).getDeviceStatus(SMARTTHINGS_TOKEN, "device-1");
+	}
+
+	@Test
+	void rejectsStatusLookupForDeviceInAnotherLocation() throws Exception {
+		when(authService.requireUser(PEZTZ_TOKEN)).thenReturn(user("ADMIN"));
+		when(smartThingsClient.getDevice(SMARTTHINGS_TOKEN, "personal-device"))
+				.thenReturn(objectMapper.readTree("""
+						{
+						  "deviceId": "personal-device",
+						  "locationId": "personal-location"
+						}
+						"""));
+
+		mockMvc.perform(get("/api/smartthings/devices/personal-device/status")
+						.header("Authorization", PEZTZ_TOKEN))
+				.andExpect(status().isNotFound());
+
+		verify(smartThingsClient).getDevice(SMARTTHINGS_TOKEN, "personal-device");
+		verify(smartThingsClient, never()).getDeviceStatus(SMARTTHINGS_TOKEN, "personal-device");
 	}
 
 	private AppUser user(String role) {

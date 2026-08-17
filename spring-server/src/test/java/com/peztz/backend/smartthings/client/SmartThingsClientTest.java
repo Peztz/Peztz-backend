@@ -30,6 +30,7 @@ class SmartThingsClientTest {
 
 	private static final String BASE_URL = "https://smartthings.example/v1";
 	private static final String ACCESS_TOKEN = "test-smartthings-token";
+	private static final String LOCATION_ID = "813afc24-6a5d-4106-9630-47c69ff6f9d7";
 
 	private MockRestServiceServer server;
 	private SmartThingsClient client;
@@ -45,7 +46,7 @@ class SmartThingsClientTest {
 
 	@Test
 	void parsesDeviceListResponse() {
-		server.expect(once(), requestTo(BASE_URL + "/devices"))
+		server.expect(once(), requestTo(BASE_URL + "/devices?locationId=" + LOCATION_ID))
 				.andExpect(method(HttpMethod.GET))
 				.andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer " + ACCESS_TOKEN))
 				.andExpect(header(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE))
@@ -66,7 +67,7 @@ class SmartThingsClientTest {
 						}
 						""", MediaType.APPLICATION_JSON));
 
-		JsonNode response = client.getDevices(ACCESS_TOKEN);
+		JsonNode response = client.getDevices(ACCESS_TOKEN, LOCATION_ID);
 
 		assertThat(response.path("items").get(0).path("deviceId").asText()).isEqualTo("device-1");
 		assertThat(response.path("items").get(0).path("customField").asText()).isEqualTo("preserved");
@@ -106,6 +107,24 @@ class SmartThingsClientTest {
 	}
 
 	@Test
+	void parsesDeviceDescriptionResponse() {
+		server.expect(once(), requestTo(BASE_URL + "/devices/device-1"))
+				.andExpect(method(HttpMethod.GET))
+				.andExpect(header(HttpHeaders.AUTHORIZATION, "Bearer " + ACCESS_TOKEN))
+				.andRespond(withSuccess("""
+						{
+						  "deviceId": "device-1",
+						  "locationId": "813afc24-6a5d-4106-9630-47c69ff6f9d7"
+						}
+						""", MediaType.APPLICATION_JSON));
+
+		JsonNode response = client.getDevice(ACCESS_TOKEN, "device-1");
+
+		assertThat(response.path("locationId").asText()).isEqualTo(LOCATION_ID);
+		server.verify();
+	}
+
+	@Test
 	void parsesDeviceHealthResponse() {
 		server.expect(once(), requestTo(BASE_URL + "/devices/device-1/health"))
 				.andExpect(method(HttpMethod.GET))
@@ -128,7 +147,7 @@ class SmartThingsClientTest {
 	void mapsSmartThings401() {
 		expectStatus(HttpStatus.UNAUTHORIZED);
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.UNAUTHORIZED);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_UNAUTHORIZED");
@@ -139,7 +158,7 @@ class SmartThingsClientTest {
 	void mapsSmartThings403() {
 		expectStatus(HttpStatus.FORBIDDEN);
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_FORBIDDEN");
@@ -150,7 +169,7 @@ class SmartThingsClientTest {
 	void mapsSmartThings429() {
 		expectStatus(HttpStatus.TOO_MANY_REQUESTS);
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_RATE_LIMITED");
@@ -161,7 +180,7 @@ class SmartThingsClientTest {
 	void mapsSmartThings404() {
 		expectStatus(HttpStatus.NOT_FOUND);
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.NOT_FOUND);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_NOT_FOUND");
@@ -172,7 +191,7 @@ class SmartThingsClientTest {
 	void mapsSmartThings5xx() {
 		expectStatus(HttpStatus.INTERNAL_SERVER_ERROR);
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_SERVER_ERROR");
@@ -181,10 +200,10 @@ class SmartThingsClientTest {
 
 	@Test
 	void mapsNetworkError() {
-		server.expect(once(), requestTo(BASE_URL + "/devices"))
+		server.expect(once(), requestTo(BASE_URL + "/devices?locationId=" + LOCATION_ID))
 				.andRespond(withException(new IOException("network unavailable")));
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_NETWORK_ERROR");
@@ -193,10 +212,10 @@ class SmartThingsClientTest {
 
 	@Test
 	void mapsInvalidJsonResponse() {
-		server.expect(once(), requestTo(BASE_URL + "/devices"))
+		server.expect(once(), requestTo(BASE_URL + "/devices?locationId=" + LOCATION_ID))
 				.andRespond(withSuccess("{invalid-json", MediaType.APPLICATION_JSON));
 
-		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN))
+		assertThatThrownBy(() -> client.getDevices(ACCESS_TOKEN, LOCATION_ID))
 				.isInstanceOfSatisfying(SmartThingsApiException.class, exception -> {
 					assertThat(exception.getStatus()).isEqualTo(HttpStatus.BAD_GATEWAY);
 					assertThat(exception.getCode()).isEqualTo("SMARTTHINGS_INVALID_RESPONSE");
@@ -204,7 +223,7 @@ class SmartThingsClientTest {
 	}
 
 	private void expectStatus(HttpStatus status) {
-		server.expect(once(), requestTo(BASE_URL + "/devices"))
+		server.expect(once(), requestTo(BASE_URL + "/devices?locationId=" + LOCATION_ID))
 				.andRespond(withStatus(status)
 						.contentType(MediaType.APPLICATION_JSON)
 						.body("{}"));

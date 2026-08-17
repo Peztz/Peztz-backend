@@ -10,7 +10,5 @@ public record SmartThingsDeviceResponse(
 		String name,
 		String label,
 		String manufacturerName,
-		JsonNode components,
-		JsonNode capabilities,
-		JsonNode raw) {
+		JsonNode components) {
 }

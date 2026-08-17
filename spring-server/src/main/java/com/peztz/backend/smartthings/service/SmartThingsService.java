@@ -35,18 +35,26 @@ public class SmartThingsService {
 	@Transactional(readOnly = true)
 	public SmartThingsDeviceListResponse findDevices(String authorization) {
 		requireAllowedUser(authorization);
-		JsonNode response = smartThingsClient.getDevices(requireSmartThingsAccessToken());
+		JsonNode response = smartThingsClient.getDevices(
+				requireSmartThingsAccessToken(), requireSmartThingsLocationId());
 		return toDeviceListResponse(response);
 	}
 
 	@Transactional(readOnly = true)
 	public SmartThingsDeviceStatusResponse getDeviceStatus(String authorization, String deviceId) {
 		requireAllowedUser(authorization);
-		JsonNode response = smartThingsClient.getDeviceStatus(requireSmartThingsAccessToken(), deviceId);
+		String accessToken = requireSmartThingsAccessToken();
+		String locationId = requireSmartThingsLocationId();
+		JsonNode device = smartThingsClient.getDevice(accessToken, deviceId);
+		if (!locationId.equals(textOrNull(device, "locationId"))) {
+			throw new ResponseStatusException(
+					HttpStatus.NOT_FOUND,
+					"SmartThings device was not found in the configured location");
+		}
+		JsonNode response = smartThingsClient.getDeviceStatus(accessToken, deviceId);
 		return new SmartThingsDeviceStatusResponse(
 				deviceId,
-				response.path("components"),
-				response);
+				response.path("components"));
 	}
 
 	private void requireAllowedUser(String authorization) {
@@ -67,6 +75,16 @@ public class SmartThingsService {
 		return properties.getAccessToken().trim();
 	}
 
+	private String requireSmartThingsLocationId() {
+		if (!StringUtils.hasText(properties.getLocationId())) {
+			throw new SmartThingsApiException(
+					HttpStatus.SERVICE_UNAVAILABLE,
+					"SMARTTHINGS_NOT_CONFIGURED",
+					"SmartThings location ID is not configured.");
+		}
+		return properties.getLocationId().trim();
+	}
+
 	private SmartThingsDeviceListResponse toDeviceListResponse(JsonNode response) {
 		JsonNode items = response.path("items");
 		List<SmartThingsDeviceResponse> devices = items.isArray()
@@ -77,8 +95,7 @@ public class SmartThingsService {
 		return new SmartThingsDeviceListResponse(
 				devices,
 				response.path("paging"),
-				response.path("_links"),
-				response);
+				response.path("_links"));
 	}
 
 	private SmartThingsDeviceResponse toDeviceResponse(JsonNode item) {
@@ -87,9 +104,7 @@ public class SmartThingsService {
 				textOrNull(item, "name"),
 				textOrNull(item, "label"),
 				textOrNull(item, "manufacturerName"),
-				item.path("components"),
-				item.path("capabilities"),
-				item);
+				item.path("components"));
 	}
 
 	private String textOrNull(JsonNode node, String fieldName) {
