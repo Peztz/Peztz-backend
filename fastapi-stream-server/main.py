@@ -162,11 +162,11 @@ def _require_api_key(
 
 class PetEventResult(BaseModel):
     externalEventId: str
-    petId: str
     cameraId: str
     eventType: str
     confidence: float
     occurredAt: str
+    petId: str | None = None
     eventEndedAt: str | None = None
     eventDurationSeconds: int | None = None
     clipStartAt: str | None = None
@@ -189,7 +189,7 @@ async def forward_pet_event(
         async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(
                 url,
-                json=event.model_dump(),
+                json=event.model_dump(exclude_none=True),
                 headers=_spring_internal_headers(),
             )
     except httpx.TimeoutException as exc:

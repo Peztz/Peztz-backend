@@ -17,7 +17,6 @@ public record PetEventCreateRequest(
 		@NotBlank @Size(max = 100)
 		String externalEventId,
 
-		@NotNull
 		UUID petId,
 
 		@NotNull

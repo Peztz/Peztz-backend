@@ -164,7 +164,6 @@ class CameraPetEventControllerTest {
 
 		String eventBody = objectMapper.writeValueAsString(Map.ofEntries(
 				Map.entry("externalEventId", "edge-event-001"),
-				Map.entry("petId", pet.getId()),
 				Map.entry("cameraId", cameraId),
 				Map.entry("eventType", "excessive_barking"),
 				Map.entry("confidence", 0.93),

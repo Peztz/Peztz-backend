@@ -79,12 +79,13 @@ public class PetEventService {
 
 	private PetEventResponse createNewEvent(
 			PetEventCreateRequest request, String externalEventId, String eventType) {
-		Pet pet = petRepository.findById(request.petId())
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found"));
 		Camera camera = cameraService.getCamera(request.cameraId());
-		if (camera.getCage().getCurrentPet() == null
-				|| !camera.getCage().getCurrentPet().getId().equals(pet.getId())) {
-			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pet is not currently assigned to the camera cage");
+		Pet pet = camera.getCage().getCurrentPet();
+		if (pet == null) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "No pet is currently assigned to the camera cage");
+		}
+		if (request.petId() != null && !request.petId().equals(pet.getId())) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Requested pet does not match the camera cage pet");
 		}
 
 		AdmissionSession session = admissionSessionRepository
