@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -47,6 +48,7 @@ import com.peztz.backend.smartthings.client.SmartThingsClient;
 class SmartThingsSensorIntegrationTest {
 
 	private static final String AUTH_TOKEN = "facility-smartthings-token";
+	private static final String OWNER_AUTH_TOKEN = "owner-smartthings-token";
 	private static final String LIGHT_DEVICE_ID = "f629bdb6-304d-42db-8954-428621a80fae";
 	private static final String CONTACT_DEVICE_ID = "4667bc8a-35e5-4c0b-9ab0-cdb16e0edbc3";
 
@@ -198,11 +200,97 @@ class SmartThingsSensorIntegrationTest {
 				.isZero();
 	}
 
+	@Test
+	void ownerCannotReadSmartThingsDeviceDetailsOrRawReadings() throws Exception {
+		registerSensor(LIGHT_DEVICE_ID, "ILLUMINANCE", "Cage light")
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/smartthings/cages/{cageId}/devices", cageId)
+					.header("Authorization", "Bearer " + OWNER_AUTH_TOKEN))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/smartthings/cages/{cageId}/readings/latest", cageId)
+					.header("Authorization", "Bearer " + OWNER_AUTH_TOKEN))
+				.andExpect(status().isForbidden());
+		mockMvc.perform(get("/api/smartthings/cages/{cageId}/readings", cageId)
+					.header("Authorization", "Bearer " + OWNER_AUTH_TOKEN))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void disconnectsAndReassignsDeviceWithoutMixingCageHistoryOrEvents() throws Exception {
+		UUID secondCageId = UUID.randomUUID();
+		jdbcTemplate.update(
+				"insert into public.cage(cage_id, hospital_id, user_id, current_pet_id, status, name, created_at) "
+						+ "values (?, ?, ?, ?, ?, ?, ?)",
+				secondCageId, facilityId, ownerId, petId, "OCCUPIED", "Cage B", LocalDateTime.now());
+		jdbcTemplate.update(
+				"insert into public.access_session(access_code, user_id, pet_id, cage_id, status, created_at) "
+						+ "values (?, ?, ?, ?, ?, ?)",
+				"654321", ownerId, petId, secondCageId, "ACTIVE", OffsetDateTime.parse("2026-08-16T00:00:00Z"));
+
+		registerSensor(CONTACT_DEVICE_ID, "CONTACT", "Cage A door")
+				.andExpect(status().isOk());
+		sync(CONTACT_DEVICE_ID)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.savedReadingCount").value(1));
+
+		registerSensor(secondCageId, CONTACT_DEVICE_ID, "CONTACT", "Cage B door")
+				.andExpect(status().isConflict());
+
+		disconnect(cageId, CONTACT_DEVICE_ID)
+				.andExpect(status().isNoContent());
+
+		assertThat(jdbcTemplate.queryForObject(
+				"select active from public.smartthings_device where smartthings_device_id = ?",
+				Boolean.class,
+				CONTACT_DEVICE_ID)).isFalse();
+		assertThat(jdbcTemplate.queryForObject(
+				"select online from public.smartthings_device where smartthings_device_id = ?",
+				Boolean.class,
+				CONTACT_DEVICE_ID)).isFalse();
+		assertThat(jdbcTemplate.queryForObject(
+				"select count(*) from public.smartthings_device where smartthings_device_id = ? and last_seen_at is null",
+				Long.class,
+				CONTACT_DEVICE_ID)).isEqualTo(1L);
+
+		mockMvc.perform(get("/api/smartthings/cages/{cageId}/devices", cageId)
+					.header("Authorization", "Bearer " + AUTH_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(0));
+		sync(CONTACT_DEVICE_ID).andExpect(status().isConflict());
+
+		registerSensor(secondCageId, CONTACT_DEVICE_ID, "CONTACT", "Cage B door")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.cageId").value(secondCageId.toString()))
+				.andExpect(jsonPath("$.online").value(false));
+		sync(CONTACT_DEVICE_ID)
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.savedReadingCount").value(1));
+
+		assertThat(jdbcTemplate.queryForObject(
+				"select count(*) from public.sensor_reading where cage_id = ?", Long.class, cageId))
+				.isEqualTo(1L);
+		assertThat(jdbcTemplate.queryForObject(
+				"select count(*) from public.sensor_reading where cage_id = ?", Long.class, secondCageId))
+				.isEqualTo(1L);
+		assertThat(jdbcTemplate.queryForList(
+				"select log_type from public.pet_logs order by created_at", String.class))
+				.containsExactly("DOOR_OPEN");
+	}
+
 	private org.springframework.test.web.servlet.ResultActions registerSensor(
 			String deviceId,
 			String deviceType,
 			String label) throws Exception {
-		return mockMvc.perform(post("/api/smartthings/cages/{cageId}/devices", cageId)
+		return registerSensor(cageId, deviceId, deviceType, label);
+	}
+
+	private org.springframework.test.web.servlet.ResultActions registerSensor(
+			UUID targetCageId,
+			String deviceId,
+			String deviceType,
+			String label) throws Exception {
+		return mockMvc.perform(post("/api/smartthings/cages/{cageId}/devices", targetCageId)
 				.header("Authorization", "Bearer " + AUTH_TOKEN)
 				.contentType(MediaType.APPLICATION_JSON)
 				.content(objectMapper.writeValueAsString(Map.of(
@@ -213,6 +301,12 @@ class SmartThingsSensorIntegrationTest {
 
 	private org.springframework.test.web.servlet.ResultActions sync(String deviceId) throws Exception {
 		return mockMvc.perform(post("/api/smartthings/devices/{deviceId}/sync", deviceId)
+				.header("Authorization", "Bearer " + AUTH_TOKEN));
+	}
+
+	private org.springframework.test.web.servlet.ResultActions disconnect(UUID targetCageId, String deviceId)
+			throws Exception {
+		return mockMvc.perform(delete("/api/smartthings/cages/{cageId}/devices/{deviceId}", targetCageId, deviceId)
 				.header("Authorization", "Bearer " + AUTH_TOKEN));
 	}
 
@@ -243,6 +337,9 @@ class SmartThingsSensorIntegrationTest {
 		jdbcTemplate.update(
 				"insert into public.auth_token(id, token, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)",
 				UUID.randomUUID(), AUTH_TOKEN, managerId, LocalDateTime.now(), LocalDateTime.now().plusDays(1));
+		jdbcTemplate.update(
+				"insert into public.auth_token(id, token, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)",
+				UUID.randomUUID(), OWNER_AUTH_TOKEN, ownerId, LocalDateTime.now(), LocalDateTime.now().plusDays(1));
 		jdbcTemplate.update(
 				"insert into public.\"Pets\"(pet_id, user_id, name, pet_breed) values (?, ?, ?, ?)",
 				petId, ownerId, "Choco", "Poodle");

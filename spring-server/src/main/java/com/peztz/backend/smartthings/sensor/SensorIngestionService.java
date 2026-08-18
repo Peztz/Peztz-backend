@@ -94,8 +94,8 @@ public class SensorIngestionService {
 		}
 
 		Optional<SensorReading> previous = readingRepository
-				.findFirstByDeviceIdAndCapabilityAndAttributeOrderByMeasuredAtDesc(
-						device.getId(), snapshot.capability(), snapshot.attribute());
+				.findFirstByDeviceIdAndCageIdAndCapabilityAndAttributeOrderByMeasuredAtDesc(
+						device.getId(), device.getCage().getId(), snapshot.capability(), snapshot.attribute());
 		AdmissionSession measurementSession = sessionForMeasurement(activeSession, snapshot.measuredAt());
 		SensorReading reading = readingRepository.save(SensorReading.builder()
 				.device(device)

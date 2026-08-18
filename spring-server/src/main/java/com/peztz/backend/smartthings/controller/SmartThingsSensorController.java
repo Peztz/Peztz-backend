@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -59,6 +60,19 @@ public class SmartThingsSensorController {
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable UUID cageId) {
 		return ResponseEntity.ok(deviceService.findByCage(authorization, cageId));
+	}
+
+	@Operation(
+			summary = "케이지와 스마트싱스 센서 연결 해제",
+			description = "과거 센서 이력을 보존하면서 케이지와 센서의 연결을 비활성화합니다.")
+	@DeleteMapping("/cages/{cageId}/devices/{deviceId}")
+	public ResponseEntity<Void> disconnect(
+			@Parameter(hidden = true)
+			@RequestHeader(value = "Authorization", required = false) String authorization,
+			@PathVariable UUID cageId,
+			@PathVariable String deviceId) {
+		deviceService.disconnect(authorization, cageId, deviceId);
+		return ResponseEntity.noContent().build();
 	}
 
 	@Operation(
