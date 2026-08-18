@@ -16,8 +16,9 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
 			String attribute,
 			OffsetDateTime measuredAt);
 
-	Optional<SensorReading> findFirstByDeviceIdAndCapabilityAndAttributeOrderByMeasuredAtDesc(
+	Optional<SensorReading> findFirstByDeviceIdAndCageIdAndCapabilityAndAttributeOrderByMeasuredAtDesc(
 			UUID deviceId,
+			UUID cageId,
 			String capability,
 			String attribute);
 

@@ -71,10 +71,27 @@ public class SmartThingsDeviceService {
 
 	@Transactional(readOnly = true)
 	public List<SmartThingsMappedDeviceResponse> findByCage(String authorization, UUID cageId) {
-		Cage cage = requireReadableCage(authorization, cageId);
+		Cage cage = requireManagerCage(authorization, cageId);
 		return deviceRepository.findByCageIdAndActiveTrueOrderByCreatedAtAsc(cage.getId()).stream()
 				.map(this::toResponse)
 				.toList();
+	}
+
+	@Transactional
+	public void disconnect(String authorization, UUID cageId, String smartThingsDeviceId) {
+		Cage cage = requireManagerCage(authorization, cageId);
+		SmartThingsDevice device = deviceRepository.findBySmartThingsDeviceId(smartThingsDeviceId)
+				.filter(existing -> existing.getCage().getId().equals(cage.getId()))
+				.orElseThrow(() -> new ResponseStatusException(
+						HttpStatus.NOT_FOUND,
+						"Active SmartThings device mapping was not found for this cage"));
+		if (!device.isActive()) {
+			throw new ResponseStatusException(
+					HttpStatus.NOT_FOUND,
+					"Active SmartThings device mapping was not found for this cage");
+		}
+		device.setActive(false);
+		resetRuntimeState(device);
 	}
 
 	@Transactional
@@ -82,6 +99,9 @@ public class SmartThingsDeviceService {
 		SmartThingsDevice device = deviceRepository.findBySmartThingsDeviceId(smartThingsDeviceId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "SmartThings device mapping not found"));
 		requireManager(authorization, device.getCage());
+		if (!device.isActive()) {
+			throw new ResponseStatusException(HttpStatus.CONFLICT, "SmartThings device mapping is not active");
+		}
 		SensorIngestionResult result = syncService.sync(device.getId(), "MANUAL");
 		return new SmartThingsSyncResponse(
 				result.deviceId(),
@@ -92,7 +112,7 @@ public class SmartThingsDeviceService {
 
 	@Transactional(readOnly = true)
 	public CageSensorLatestResponse findLatest(String authorization, UUID cageId) {
-		Cage cage = requireReadableCage(authorization, cageId);
+		Cage cage = requireManagerCage(authorization, cageId);
 		List<SensorReading> recent = readingRepository.findByCageIdOrderByMeasuredAtDesc(
 				cage.getId(), PageRequest.of(0, 1000));
 		Map<String, SensorReading> latest = new LinkedHashMap<>();
@@ -111,7 +131,7 @@ public class SmartThingsDeviceService {
 			OffsetDateTime from,
 			OffsetDateTime to,
 			int limit) {
-		Cage cage = requireReadableCage(authorization, cageId);
+		Cage cage = requireManagerCage(authorization, cageId);
 		if ((from == null) != (to == null)) {
 			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "from and to must be supplied together");
 		}
@@ -131,8 +151,15 @@ public class SmartThingsDeviceService {
 			Cage cage,
 			SmartThingsDeviceType deviceType,
 			String label) {
-		if (!existing.getCage().getId().equals(cage.getId())) {
+		boolean cageChanged = !existing.getCage().getId().equals(cage.getId());
+		if (cageChanged && existing.isActive()) {
 			throw new ResponseStatusException(HttpStatus.CONFLICT, "SmartThings device is already linked to another cage");
+		}
+		if (cageChanged) {
+			existing.setCage(cage);
+		}
+		if (!existing.isActive() || cageChanged) {
+			resetRuntimeState(existing);
 		}
 		existing.setDeviceType(deviceType);
 		existing.setLabel(normalizeLabel(label));
@@ -140,19 +167,11 @@ public class SmartThingsDeviceService {
 		return existing;
 	}
 
-	private Cage requireReadableCage(String authorization, UUID cageId) {
+	private Cage requireManagerCage(String authorization, UUID cageId) {
 		Cage cage = cageRepository.findById(cageId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
-		AppUser user = authService.requireUser(authorization);
-		String role = normalizedRole(user);
-		if (MANAGER_ROLES.contains(role)) {
-			requireFacilityAccess(user, role, cage);
-			return cage;
-		}
-		if ("OWNER".equals(role) && cage.getUser() != null && cage.getUser().getId().equals(user.getId())) {
-			return cage;
-		}
-		throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User cannot read sensors for this cage");
+		requireManager(authorization, cage);
+		return cage;
 	}
 
 	private void requireManager(String authorization, Cage cage) {
@@ -188,6 +207,12 @@ public class SmartThingsDeviceService {
 
 	private String normalizeLabel(String label) {
 		return StringUtils.hasText(label) ? label.trim() : null;
+	}
+
+	private void resetRuntimeState(SmartThingsDevice device) {
+		device.setBattery(null);
+		device.setOnline(false);
+		device.setLastSeenAt(null);
 	}
 
 	private String normalizedRole(AppUser user) {

@@ -117,6 +117,18 @@ Content-Type: application/json
 Registering the same device for the same cage updates its type/label and
 reactivates it. Linking it to a different cage returns `409 Conflict`.
 
+To disconnect a sensor while retaining its existing reading history:
+
+```http
+DELETE /api/smartthings/cages/{cageId}/devices/{deviceId}
+Authorization: Bearer {peztzAccessToken}
+```
+
+Disconnecting marks the mapping inactive, clears its runtime health metadata,
+and excludes it from polling. An inactive device can then be registered to a
+different cage. Historical readings remain associated with the cage where they
+were captured.
+
 ### 3. Fetch and store one live value
 
 ```http
@@ -144,6 +156,10 @@ Authorization: Bearer {peztzAccessToken}
 
 Optional `from` and `to` values must be supplied together as ISO-8601 timestamps.
 The maximum `limit` is 500.
+
+Device metadata and raw sensor reading endpoints are restricted to system and
+facility managers. Owners receive derived sensor events through the existing
+session log and report APIs instead of accessing SmartThings device details.
 
 ## Derived session events
 
