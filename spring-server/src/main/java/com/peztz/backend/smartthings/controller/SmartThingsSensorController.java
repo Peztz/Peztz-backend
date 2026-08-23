@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.peztz.backend.smartthings.device.SmartThingsDeviceService;
+import com.peztz.backend.smartthings.device.SmartThingsDeviceRegistrationService;
 import com.peztz.backend.smartthings.dto.CageSensorLatestResponse;
 import com.peztz.backend.smartthings.dto.SensorReadingResponse;
 import com.peztz.backend.smartthings.dto.SmartThingsDeviceRegistrationRequest;
@@ -38,6 +39,7 @@ import lombok.RequiredArgsConstructor;
 public class SmartThingsSensorController {
 
 	private final SmartThingsDeviceService deviceService;
+	private final SmartThingsDeviceRegistrationService registrationService;
 
 	@Operation(
 			summary = "스마트싱스 센서를 케이지에 연결",
@@ -48,7 +50,7 @@ public class SmartThingsSensorController {
 			@RequestHeader(value = "Authorization", required = false) String authorization,
 			@PathVariable UUID cageId,
 			@Valid @RequestBody SmartThingsDeviceRegistrationRequest request) {
-		return ResponseEntity.ok(deviceService.register(authorization, cageId, request));
+		return ResponseEntity.ok(registrationService.register(authorization, cageId, request));
 	}
 
 	@Operation(

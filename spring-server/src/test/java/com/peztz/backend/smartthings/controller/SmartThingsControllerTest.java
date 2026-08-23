@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -22,9 +23,14 @@ import org.springframework.web.server.ResponseStatusException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.peztz.backend.auth.entity.AppUser;
 import com.peztz.backend.auth.service.AuthService;
+import com.peztz.backend.cage.entity.Cage;
 import com.peztz.backend.common.GlobalExceptionHandler;
 import com.peztz.backend.smartthings.client.SmartThingsClient;
 import com.peztz.backend.smartthings.config.SmartThingsProperties;
+import com.peztz.backend.smartthings.device.SmartThingsCapabilityResolver;
+import com.peztz.backend.smartthings.device.SmartThingsDevice;
+import com.peztz.backend.smartthings.device.SmartThingsDeviceRepository;
+import com.peztz.backend.smartthings.device.SmartThingsDeviceType;
 import com.peztz.backend.smartthings.exception.SmartThingsExceptionHandler;
 import com.peztz.backend.smartthings.service.SmartThingsService;
 
@@ -36,6 +42,7 @@ class SmartThingsControllerTest {
 
 	private AuthService authService;
 	private SmartThingsClient smartThingsClient;
+	private SmartThingsDeviceRepository deviceRepository;
 	private SmartThingsProperties properties;
 	private MockMvc mockMvc;
 	private ObjectMapper objectMapper;
@@ -44,11 +51,17 @@ class SmartThingsControllerTest {
 	void setUp() {
 		authService = Mockito.mock(AuthService.class);
 		smartThingsClient = Mockito.mock(SmartThingsClient.class);
+		deviceRepository = Mockito.mock(SmartThingsDeviceRepository.class);
 		properties = new SmartThingsProperties();
 		properties.setAccessToken(SMARTTHINGS_TOKEN);
 		properties.setLocationId(LOCATION_ID);
 		objectMapper = new ObjectMapper();
-		SmartThingsService service = new SmartThingsService(authService, smartThingsClient, properties);
+		SmartThingsService service = new SmartThingsService(
+				authService,
+				smartThingsClient,
+				properties,
+				deviceRepository,
+				new SmartThingsCapabilityResolver());
 		mockMvc = MockMvcBuilders.standaloneSetup(new SmartThingsController(service))
 				.setControllerAdvice(new GlobalExceptionHandler(), new SmartThingsExceptionHandler())
 				.build();
@@ -107,6 +120,18 @@ class SmartThingsControllerTest {
 	@Test
 	void allowsAdminRole() throws Exception {
 		when(authService.requireUser(PEZTZ_TOKEN)).thenReturn(user("ADMIN"));
+		UUID cageId = UUID.randomUUID();
+		UUID mappingId = UUID.randomUUID();
+		when(deviceRepository.findByActiveTrueOrderByCreatedAtAsc()).thenReturn(List.of(
+				SmartThingsDevice.builder()
+						.id(mappingId)
+						.cage(Cage.builder().id(cageId).name("B-1").build())
+						.smartThingsDeviceId("device-1")
+						.deviceType(SmartThingsDeviceType.ILLUMINANCE)
+						.label("B-1 light")
+						.online(true)
+						.active(true)
+						.build()));
 		when(smartThingsClient.getDevices(SMARTTHINGS_TOKEN, LOCATION_ID)).thenReturn(objectMapper.readTree("""
 				{
 				  "items": [
@@ -115,6 +140,15 @@ class SmartThingsControllerTest {
 				      "name": "sensor",
 				      "label": "Sensor",
 				      "manufacturerName": "SmartThings",
+				      "components": [
+				        {
+				          "id": "main",
+				          "capabilities": [
+				            {"id": "illuminanceMeasurement"},
+				            {"id": "battery"}
+				          ]
+				        }
+				      ],
 				      "sensitiveMetadata": "must-not-be-returned"
 				    }
 				  ],
@@ -128,6 +162,11 @@ class SmartThingsControllerTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.items", hasSize(1)))
 				.andExpect(jsonPath("$.items[0].deviceId").value("device-1"))
+				.andExpect(jsonPath("$.items[0].supportedTypes[0]").value("ILLUMINANCE"))
+				.andExpect(jsonPath("$.items[0].registered").value(true))
+				.andExpect(jsonPath("$.items[0].mapping.mappingId").value(mappingId.toString()))
+				.andExpect(jsonPath("$.items[0].mapping.cageId").value(cageId.toString()))
+				.andExpect(jsonPath("$.items[0].mapping.cageName").value("B-1"))
 				.andExpect(jsonPath("$.paging.next").value("cursor"))
 				.andExpect(jsonPath("$.items[0].raw").doesNotExist())
 				.andExpect(jsonPath("$.raw").doesNotExist());

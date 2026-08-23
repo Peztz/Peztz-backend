@@ -3,6 +3,7 @@ package com.peztz.backend.smartthings;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -30,6 +31,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.peztz.backend.smartthings.client.SmartThingsClient;
 
 @SpringBootTest(properties = {
@@ -40,6 +42,7 @@ import com.peztz.backend.smartthings.client.SmartThingsClient;
 		"spring.jpa.hibernate.ddl-auto=none",
 		"spring.jpa.database-platform=org.hibernate.dialect.H2Dialect",
 		"smartthings.access-token=test-smartthings-token",
+		"smartthings.location-id=test-location",
 		"smartthings.polling-enabled=false",
 		"smartthings.low-light-threshold-lux=50",
 		"peztz.fastapi.client-mode=mock"
@@ -89,6 +92,12 @@ class SmartThingsSensorIntegrationTest {
 				.thenReturn(fixture("health-online.json"));
 		when(smartThingsClient.getDeviceHealth("test-smartthings-token", CONTACT_DEVICE_ID))
 				.thenReturn(fixture("health-online.json"));
+		when(smartThingsClient.getDevice("test-smartthings-token", LIGHT_DEVICE_ID))
+				.thenReturn(deviceDetails(
+						LIGHT_DEVICE_ID, "illuminanceMeasurement", "battery"));
+		when(smartThingsClient.getDevice("test-smartthings-token", CONTACT_DEVICE_ID))
+				.thenReturn(deviceDetails(
+						CONTACT_DEVICE_ID, "contactSensor", "temperatureMeasurement", "battery"));
 	}
 
 	@Test
@@ -97,16 +106,16 @@ class SmartThingsSensorIntegrationTest {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.cageId").value(cageId.toString()))
 				.andExpect(jsonPath("$.deviceId").value(LIGHT_DEVICE_ID))
-				.andExpect(jsonPath("$.online").value(false));
+				.andExpect(jsonPath("$.online").value(true));
 		registerSensor(CONTACT_DEVICE_ID, "CONTACT", "Cage door")
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.deviceType").value("CONTACT"));
 
 		sync(LIGHT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(1));
 		sync(LIGHT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(1));
-		sync(LIGHT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(1));
+		sync(LIGHT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(0));
 		sync(CONTACT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(1));
-		sync(CONTACT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(1));
+		sync(CONTACT_DEVICE_ID).andExpect(status().isOk()).andExpect(jsonPath("$.savedReadingCount").value(0));
 
 		// Mockito repeats the final response. The repeated timestamp must not create another row or event.
 		sync(CONTACT_DEVICE_ID)
@@ -131,7 +140,7 @@ class SmartThingsSensorIntegrationTest {
 				.isEqualTo(5L);
 		assertThat(jdbcTemplate.queryForList(
 				"select log_type from public.pet_logs order by created_at", String.class))
-				.containsExactlyInAnyOrder("LOW_LIGHT", "LIGHT_RECOVERED", "DOOR_OPEN", "DOOR_CLOSED");
+				.containsExactlyInAnyOrder("LOW_LIGHT", "LIGHT_RECOVERED", "DOOR_CLOSED");
 		assertThat(jdbcTemplate.queryForObject(
 				"select battery from public.smartthings_device where smartthings_device_id = ?",
 				Integer.class,
@@ -153,12 +162,12 @@ class SmartThingsSensorIntegrationTest {
 				.andExpect(jsonPath("$.code").value("SMARTTHINGS_DEVICE_OFFLINE"));
 
 		assertThat(jdbcTemplate.queryForObject("select count(*) from public.sensor_reading", Long.class))
-				.isZero();
+				.isEqualTo(1L);
 		assertThat(jdbcTemplate.queryForObject(
 				"select online from public.smartthings_device where smartthings_device_id = ?",
 				Boolean.class,
 				LIGHT_DEVICE_ID)).isFalse();
-		verify(smartThingsClient, never()).getDeviceStatus("test-smartthings-token", LIGHT_DEVICE_ID);
+		verify(smartThingsClient, times(1)).getDeviceStatus("test-smartthings-token", LIGHT_DEVICE_ID);
 	}
 
 	@Test
@@ -168,10 +177,6 @@ class SmartThingsSensorIntegrationTest {
 				OffsetDateTime.parse("2026-08-17T00:00:00Z"), cageId);
 		registerSensor(CONTACT_DEVICE_ID, "CONTACT", "Cage door")
 				.andExpect(status().isOk());
-
-		sync(CONTACT_DEVICE_ID)
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.savedReadingCount").value(1));
 
 		assertThat(jdbcTemplate.queryForObject("select count(*) from public.sensor_reading", Long.class))
 				.isEqualTo(1L);
@@ -218,6 +223,11 @@ class SmartThingsSensorIntegrationTest {
 
 	@Test
 	void disconnectsAndReassignsDeviceWithoutMixingCageHistoryOrEvents() throws Exception {
+		when(smartThingsClient.getDeviceStatus("test-smartthings-token", CONTACT_DEVICE_ID))
+				.thenReturn(
+						fixture("contact-open-status.json"),
+						fixture("contact-closed-status.json"),
+						contactStatus("contact-open-status.json", "2026-08-16T04:50:00Z"));
 		UUID secondCageId = UUID.randomUUID();
 		jdbcTemplate.update(
 				"insert into public.cage(cage_id, hospital_id, user_id, current_pet_id, status, name, created_at) "
@@ -262,20 +272,58 @@ class SmartThingsSensorIntegrationTest {
 		registerSensor(secondCageId, CONTACT_DEVICE_ID, "CONTACT", "Cage B door")
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.cageId").value(secondCageId.toString()))
-				.andExpect(jsonPath("$.online").value(false));
-		sync(CONTACT_DEVICE_ID)
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.savedReadingCount").value(1));
+				.andExpect(jsonPath("$.online").value(true));
 
 		assertThat(jdbcTemplate.queryForObject(
 				"select count(*) from public.sensor_reading where cage_id = ?", Long.class, cageId))
-				.isEqualTo(1L);
+				.isEqualTo(2L);
 		assertThat(jdbcTemplate.queryForObject(
 				"select count(*) from public.sensor_reading where cage_id = ?", Long.class, secondCageId))
 				.isEqualTo(1L);
 		assertThat(jdbcTemplate.queryForList(
 				"select log_type from public.pet_logs order by created_at", String.class))
-				.containsExactly("DOOR_OPEN");
+				.containsExactly("DOOR_CLOSED");
+	}
+
+	@Test
+	void rejectsRegistrationWhenDeviceDoesNotSupportSelectedType() throws Exception {
+		registerSensor(LIGHT_DEVICE_ID, "CONTACT", "Wrong sensor type")
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("SMARTTHINGS_UNSUPPORTED_DEVICE_TYPE"));
+
+		assertThat(jdbcTemplate.queryForObject("select count(*) from public.smartthings_device", Long.class))
+				.isZero();
+		verify(smartThingsClient, never()).getDeviceHealth("test-smartthings-token", LIGHT_DEVICE_ID);
+	}
+
+	@Test
+	void rejectsRegistrationWhenDeviceBelongsToAnotherLocation() throws Exception {
+		JsonNode device = deviceDetails(LIGHT_DEVICE_ID, "illuminanceMeasurement");
+		((ObjectNode) device).put("locationId", "another-location");
+		when(smartThingsClient.getDevice("test-smartthings-token", LIGHT_DEVICE_ID)).thenReturn(device);
+
+		registerSensor(LIGHT_DEVICE_ID, "ILLUMINANCE", "Wrong location")
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.code").value("SMARTTHINGS_DEVICE_NOT_IN_LOCATION"));
+
+		assertThat(jdbcTemplate.queryForObject("select count(*) from public.smartthings_device", Long.class))
+				.isZero();
+		verify(smartThingsClient, never()).getDeviceHealth("test-smartthings-token", LIGHT_DEVICE_ID);
+	}
+
+	@Test
+	void keepsRegistrationWhenInitialSyncFindsDeviceOffline() throws Exception {
+		when(smartThingsClient.getDeviceHealth("test-smartthings-token", LIGHT_DEVICE_ID))
+				.thenReturn(fixture("health-offline.json"));
+
+		registerSensor(LIGHT_DEVICE_ID, "ILLUMINANCE", "Offline light")
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.online").value(false));
+
+		assertThat(jdbcTemplate.queryForObject("select count(*) from public.smartthings_device", Long.class))
+				.isEqualTo(1L);
+		assertThat(jdbcTemplate.queryForObject("select count(*) from public.sensor_reading", Long.class))
+				.isZero();
 	}
 
 	private org.springframework.test.web.servlet.ResultActions registerSensor(
@@ -317,6 +365,26 @@ class SmartThingsSensorIntegrationTest {
 			}
 			return objectMapper.readTree(input);
 		}
+	}
+
+	private JsonNode contactStatus(String fixtureName, String timestamp) throws IOException {
+		JsonNode status = fixture(fixtureName).deepCopy();
+		((ObjectNode) status.path("components").path("main")
+				.path("contactSensor").path("contact"))
+				.put("timestamp", timestamp);
+		return status;
+	}
+
+	private JsonNode deviceDetails(String deviceId, String... capabilities) {
+		List<Map<String, String>> capabilityItems = java.util.Arrays.stream(capabilities)
+				.map(capability -> Map.of("id", capability))
+				.toList();
+		return objectMapper.valueToTree(Map.of(
+				"deviceId", deviceId,
+				"locationId", "test-location",
+				"components", List.of(Map.of(
+						"id", "main",
+						"capabilities", capabilityItems))));
 	}
 
 	private void insertDomainData() {
