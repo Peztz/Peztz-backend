@@ -46,15 +46,15 @@ public class SmartThingsDeviceService {
 	private final SensorReadingMapper readingMapper;
 
 	@Transactional
-	public SmartThingsMappedDeviceResponse register(
+	public SmartThingsMappedDeviceResponse registerValidated(
 			String authorization,
 			UUID cageId,
-			SmartThingsDeviceRegistrationRequest request) {
+			SmartThingsDeviceRegistrationRequest request,
+			SmartThingsDeviceType deviceType) {
 		Cage cage = cageRepository.findById(cageId)
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
 		requireManager(authorization, cage);
 		String externalDeviceId = request.deviceId().trim();
-		SmartThingsDeviceType deviceType = parseDeviceType(request.deviceType());
 
 		SmartThingsDevice device = deviceRepository.findBySmartThingsDeviceId(externalDeviceId)
 				.map(existing -> updateExisting(existing, cage, deviceType, request.label()))
@@ -67,6 +67,20 @@ public class SmartThingsDeviceService {
 						.active(true)
 						.build());
 		return toResponse(deviceRepository.save(device));
+	}
+
+	@Transactional(readOnly = true)
+	public void requireCageAccess(String authorization, UUID cageId) {
+		requireManagerCage(authorization, cageId);
+	}
+
+	@Transactional(readOnly = true)
+	public SmartThingsMappedDeviceResponse findByMappingId(String authorization, UUID mappingId) {
+		SmartThingsDevice device = deviceRepository.findById(mappingId)
+				.orElseThrow(() -> new ResponseStatusException(
+						HttpStatus.NOT_FOUND, "SmartThings device mapping not found"));
+		requireManager(authorization, device.getCage());
+		return toResponse(device);
 	}
 
 	@Transactional(readOnly = true)
@@ -192,16 +206,6 @@ public class SmartThingsDeviceService {
 		}
 		if (user.getHospitalId() != null && !user.getHospitalId().equals(cage.getFacility().getId())) {
 			throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User cannot manage this facility");
-		}
-	}
-
-	private SmartThingsDeviceType parseDeviceType(String rawType) {
-		try {
-			return SmartThingsDeviceType.valueOf(rawType.trim().toUpperCase(Locale.ROOT));
-		} catch (IllegalArgumentException exception) {
-			throw new ResponseStatusException(
-					HttpStatus.BAD_REQUEST,
-					"deviceType must be CONTACT, ILLUMINANCE, or TEMPERATURE_HUMIDITY");
 		}
 	}
 

@@ -1,7 +1,9 @@
 package com.peztz.backend.smartthings.service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import org.springframework.http.HttpStatus;
@@ -15,7 +17,11 @@ import com.peztz.backend.auth.entity.AppUser;
 import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.smartthings.client.SmartThingsClient;
 import com.peztz.backend.smartthings.config.SmartThingsProperties;
+import com.peztz.backend.smartthings.device.SmartThingsCapabilityResolver;
+import com.peztz.backend.smartthings.device.SmartThingsDevice;
+import com.peztz.backend.smartthings.device.SmartThingsDeviceRepository;
 import com.peztz.backend.smartthings.dto.SmartThingsDeviceListResponse;
+import com.peztz.backend.smartthings.dto.SmartThingsDeviceMappingSummary;
 import com.peztz.backend.smartthings.dto.SmartThingsDeviceResponse;
 import com.peztz.backend.smartthings.dto.SmartThingsDeviceStatusResponse;
 import com.peztz.backend.smartthings.exception.SmartThingsApiException;
@@ -31,13 +37,19 @@ public class SmartThingsService {
 	private final AuthService authService;
 	private final SmartThingsClient smartThingsClient;
 	private final SmartThingsProperties properties;
+	private final SmartThingsDeviceRepository deviceRepository;
+	private final SmartThingsCapabilityResolver capabilityResolver;
 
 	@Transactional(readOnly = true)
 	public SmartThingsDeviceListResponse findDevices(String authorization) {
 		requireAllowedUser(authorization);
 		JsonNode response = smartThingsClient.getDevices(
 				requireSmartThingsAccessToken(), requireSmartThingsLocationId());
-		return toDeviceListResponse(response);
+		Map<String, SmartThingsDevice> mappings = new LinkedHashMap<>();
+		for (SmartThingsDevice device : deviceRepository.findByActiveTrueOrderByCreatedAtAsc()) {
+			mappings.put(device.getSmartThingsDeviceId(), device);
+		}
+		return toDeviceListResponse(response, mappings);
 	}
 
 	@Transactional(readOnly = true)
@@ -85,11 +97,13 @@ public class SmartThingsService {
 		return properties.getLocationId().trim();
 	}
 
-	private SmartThingsDeviceListResponse toDeviceListResponse(JsonNode response) {
+	private SmartThingsDeviceListResponse toDeviceListResponse(
+			JsonNode response,
+			Map<String, SmartThingsDevice> mappings) {
 		JsonNode items = response.path("items");
 		List<SmartThingsDeviceResponse> devices = items.isArray()
 				? java.util.stream.StreamSupport.stream(items.spliterator(), false)
-						.map(this::toDeviceResponse)
+						.map(item -> toDeviceResponse(item, mappings.get(textOrNull(item, "deviceId"))))
 						.toList()
 				: List.of();
 		return new SmartThingsDeviceListResponse(
@@ -98,13 +112,28 @@ public class SmartThingsService {
 				response.path("_links"));
 	}
 
-	private SmartThingsDeviceResponse toDeviceResponse(JsonNode item) {
+	private SmartThingsDeviceResponse toDeviceResponse(JsonNode item, SmartThingsDevice mapping) {
 		return new SmartThingsDeviceResponse(
 				textOrNull(item, "deviceId"),
 				textOrNull(item, "name"),
 				textOrNull(item, "label"),
 				textOrNull(item, "manufacturerName"),
-				item.path("components"));
+				item.path("components"),
+				capabilityResolver.supportedTypes(item),
+				mapping != null,
+				mapping == null ? null : toMappingSummary(mapping));
+	}
+
+	private SmartThingsDeviceMappingSummary toMappingSummary(SmartThingsDevice mapping) {
+		return new SmartThingsDeviceMappingSummary(
+				mapping.getId(),
+				mapping.getCage().getId(),
+				mapping.getCage().getName(),
+				mapping.getDeviceType(),
+				mapping.getLabel(),
+				mapping.getBattery(),
+				mapping.isOnline(),
+				mapping.getLastSeenAt());
 	}
 
 	private String textOrNull(JsonNode node, String fieldName) {

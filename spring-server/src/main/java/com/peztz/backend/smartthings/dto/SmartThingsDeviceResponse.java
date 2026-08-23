@@ -1,6 +1,9 @@
 package com.peztz.backend.smartthings.dto;
 
+import java.util.List;
+
 import com.fasterxml.jackson.databind.JsonNode;
+import com.peztz.backend.smartthings.device.SmartThingsDeviceType;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -10,5 +13,8 @@ public record SmartThingsDeviceResponse(
 		String name,
 		String label,
 		String manufacturerName,
-		JsonNode components) {
+		JsonNode components,
+		List<SmartThingsDeviceType> supportedTypes,
+		boolean registered,
+		SmartThingsDeviceMappingSummary mapping) {
 }

@@ -86,7 +86,34 @@ and returns `404 Not Found` when the device belongs to another location.
 All examples use the PEZTZ login access token in `Authorization`. This is not the
 SmartThings PAT.
 
-### 1. Link the illuminance sensor to a cage
+### 1. List devices for the management UI
+
+```http
+GET /api/smartthings/devices
+Authorization: Bearer {peztzAccessToken}
+```
+
+Each item includes normalized `supportedTypes`, a `registered` flag, and the
+active cage `mapping` when present. The frontend can use these fields directly
+without parsing SmartThings capabilities.
+
+```json
+{
+  "deviceId": "f629bdb6-304d-42db-8954-428621a80fae",
+  "label": "Illuminance sensor",
+  "supportedTypes": ["ILLUMINANCE"],
+  "registered": true,
+  "mapping": {
+    "mappingId": "1ae8b8ae-189e-4ceb-a8f0-f0e7f5a962d9",
+    "cageId": "4bcbf052-417e-45c5-86f2-e54afdb9235d",
+    "cageName": "B-1",
+    "deviceType": "ILLUMINANCE",
+    "online": true
+  }
+}
+```
+
+### 2. Link the illuminance sensor to a cage
 
 ```http
 POST /api/smartthings/cages/{cageId}/devices
@@ -100,7 +127,7 @@ Content-Type: application/json
 }
 ```
 
-### 2. Link the contact sensor to the same cage
+### 3. Link the contact sensor to the same cage
 
 ```http
 POST /api/smartthings/cages/{cageId}/devices
@@ -116,6 +143,13 @@ Content-Type: application/json
 
 Registering the same device for the same cage updates its type/label and
 reactivates it. Linking it to a different cage returns `409 Conflict`.
+Registration first verifies that the device exists in the configured
+SmartThings location and supports the requested type. After the mapping is
+committed, the backend immediately attempts one synchronization. A device that
+is temporarily offline remains registered with `online: false` and can recover
+through polling or manual synchronization. The initial registration reading is
+stored as a baseline without creating a derived door or low-light event;
+subsequent polling and manual synchronization create events normally.
 
 To disconnect a sensor while retaining its existing reading history:
 
@@ -129,7 +163,7 @@ and excludes it from polling. An inactive device can then be registered to a
 different cage. Historical readings remain associated with the cage where they
 were captured.
 
-### 3. Fetch and store one live value
+### 4. Fetch and store one live value
 
 ```http
 POST /api/smartthings/devices/{deviceId}/sync
@@ -140,14 +174,14 @@ The response reports how many new readings were saved. A repeated SmartThings
 measurement timestamp returns `savedReadingCount: 0` and does not duplicate the
 row or event.
 
-### 4. Read current cage state
+### 5. Read current cage state
 
 ```http
 GET /api/smartthings/cages/{cageId}/readings/latest
 Authorization: Bearer {peztzAccessToken}
 ```
 
-### 5. Read cage sensor history
+### 6. Read cage sensor history
 
 ```http
 GET /api/smartthings/cages/{cageId}/readings?limit=100

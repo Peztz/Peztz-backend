@@ -114,7 +114,7 @@ public class SensorIngestionService {
 		boolean chronologicallyNewest = previous
 				.map(existing -> snapshot.measuredAt().isAfter(existing.getMeasuredAt()))
 				.orElse(true);
-		if (measurementSession != null && chronologicallyNewest) {
+		if (!"REGISTRATION".equals(source) && measurementSession != null && chronologicallyNewest) {
 			createDerivedEventIfNeeded(device, measurementSession, snapshot, previous.orElse(null));
 		}
 		return Optional.of(reading);
