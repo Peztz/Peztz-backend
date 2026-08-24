@@ -120,6 +120,42 @@ curl http://127.0.0.1:18000/health
 4. Hibernate가 출력한 누락 테이블·컬럼
 5. `daily_report` 마이그레이션 적용 여부
 
+### 운영 서비스와 분리된 feature 미리보기
+
+`main` 병합·운영 배포 전에 운영 DB의 승인된 한 건만 검증할 때는 운영 작업 디렉터리를
+전환하지 않습니다. `feature/jun-backend`를 별도 worktree에 만들고 아래 격리 설정을
+사용합니다.
+
+```bash
+cd ~/Peztz-backend-docker
+git fetch origin feature/jun-backend
+git worktree add ~/Peztz-backend-report-test origin/feature/jun-backend
+cp infra/.env ~/Peztz-backend-report-test/infra/.env
+chmod 600 ~/Peztz-backend-report-test/infra/.env
+cd ~/Peztz-backend-report-test/infra
+```
+
+운영 컨테이너와 겹치지 않는 이미지·컨테이너·네트워크·loopback 포트를 사용하고, 자동
+리포트와 SmartThings 폴링을 강제로 끕니다.
+
+```bash
+DB_HOST=host.docker.internal \
+SPRING_IMAGE=peztz-spring:report-test \
+FASTAPI_IMAGE=peztz-fastapi:report-test \
+SPRING_BIND_ADDRESS=127.0.0.1 \
+SPRING_HOST_PORT=19080 \
+FASTAPI_BIND_ADDRESS=127.0.0.1 \
+FASTAPI_HOST_PORT=19000 \
+docker compose --project-name peztz-report-test \
+  --env-file .env \
+  -f docker-compose.yml \
+  -f docker-compose.report-test.yml \
+  up -d --build spring fastapi
+```
+
+이 명령은 기존 운영 컨테이너를 재시작하지 않습니다. 검증 API는 GCP 서버 내부의
+`http://127.0.0.1:19080`에서만 접근할 수 있습니다.
+
 ## 5. 실제 OpenAI E2E 호출
 
 DB 담당자와 합의한 테스트 보호자 계정으로 로그인해 Bearer 토큰을 발급받습니다. 로그가
