@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import com.peztz.backend.admission.repository.AdmissionSessionRepository;
 import com.peztz.backend.auth.entity.AppUser;
 import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.cage.entity.Cage;
@@ -37,9 +38,12 @@ import lombok.RequiredArgsConstructor;
 public class SmartThingsDeviceService {
 
 	private static final Set<String> MANAGER_ROLES = Set.of("ADMIN", "FACILITY_MANAGER", "FACILITY", "HOSPITAL");
+	private static final String OWNER_ROLE = "OWNER";
+	private static final String ACTIVE_SESSION_STATUS = "ACTIVE";
 
 	private final SmartThingsDeviceRepository deviceRepository;
 	private final SensorReadingRepository readingRepository;
+	private final AdmissionSessionRepository admissionSessionRepository;
 	private final CageRepository cageRepository;
 	private final AuthService authService;
 	private final SmartThingsSensorSyncService syncService;
@@ -126,8 +130,8 @@ public class SmartThingsDeviceService {
 
 	@Transactional(readOnly = true)
 	public CageSensorLatestResponse findLatest(String authorization, UUID cageId) {
-		Cage cage = requireManagerCage(authorization, cageId);
-		List<SensorReading> recent = readingRepository.findByCageIdOrderByMeasuredAtDesc(
+		Cage cage = requireCageReadAccess(authorization, cageId);
+		List<SensorReading> recent = readingRepository.findByCageIdAndDeviceActiveTrueOrderByMeasuredAtDesc(
 				cage.getId(), PageRequest.of(0, 1000));
 		Map<String, SensorReading> latest = new LinkedHashMap<>();
 		for (SensorReading reading : recent) {
@@ -186,6 +190,23 @@ public class SmartThingsDeviceService {
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
 		requireManager(authorization, cage);
 		return cage;
+	}
+
+	private Cage requireCageReadAccess(String authorization, UUID cageId) {
+		Cage cage = cageRepository.findById(cageId)
+				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Cage not found"));
+		AppUser user = authService.requireUser(authorization);
+		String role = normalizedRole(user);
+		if (MANAGER_ROLES.contains(role)) {
+			requireFacilityAccess(user, role, cage);
+			return cage;
+		}
+		if (OWNER_ROLE.equals(role)
+				&& admissionSessionRepository.existsByCageIdAndOwnerIdAndStatus(
+						cageId, user.getId(), ACTIVE_SESSION_STATUS)) {
+			return cage;
+		}
+		throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User cannot read this cage");
 	}
 
 	private void requireManager(String authorization, Cage cage) {

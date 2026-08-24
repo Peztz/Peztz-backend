@@ -52,6 +52,7 @@ class SmartThingsSensorIntegrationTest {
 
 	private static final String AUTH_TOKEN = "facility-smartthings-token";
 	private static final String OWNER_AUTH_TOKEN = "owner-smartthings-token";
+	private static final String OTHER_OWNER_AUTH_TOKEN = "other-owner-smartthings-token";
 	private static final String LIGHT_DEVICE_ID = "f629bdb6-304d-42db-8954-428621a80fae";
 	private static final String CONTACT_DEVICE_ID = "4667bc8a-35e5-4c0b-9ab0-cdb16e0edbc3";
 
@@ -206,7 +207,7 @@ class SmartThingsSensorIntegrationTest {
 	}
 
 	@Test
-	void ownerCannotReadSmartThingsDeviceDetailsOrRawReadings() throws Exception {
+	void ownerCanReadLatestMeasurementsForActiveCageButNotManagementDetailsOrHistory() throws Exception {
 		registerSensor(LIGHT_DEVICE_ID, "ILLUMINANCE", "Cage light")
 				.andExpect(status().isOk());
 
@@ -215,9 +216,27 @@ class SmartThingsSensorIntegrationTest {
 				.andExpect(status().isForbidden());
 		mockMvc.perform(get("/api/smartthings/cages/{cageId}/readings/latest", cageId)
 					.header("Authorization", "Bearer " + OWNER_AUTH_TOKEN))
-				.andExpect(status().isForbidden());
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.readings.length()").value(1))
+				.andExpect(jsonPath("$.readings[0].deviceId").value(LIGHT_DEVICE_ID));
 		mockMvc.perform(get("/api/smartthings/cages/{cageId}/readings", cageId)
 					.header("Authorization", "Bearer " + OWNER_AUTH_TOKEN))
+				.andExpect(status().isForbidden());
+	}
+
+	@Test
+	void ownerCannotReadLatestMeasurementsForAnotherOwnersCage() throws Exception {
+		UUID otherOwnerId = UUID.randomUUID();
+		jdbcTemplate.update(
+				"insert into public.users(user_id, hospital_id, email, password, name, role) values (?, ?, ?, ?, ?, ?)",
+				otherOwnerId, null, "other-owner@example.com", "password", "Other owner", "OWNER");
+		jdbcTemplate.update(
+				"insert into public.auth_token(id, token, user_id, created_at, expires_at) values (?, ?, ?, ?, ?)",
+				UUID.randomUUID(), OTHER_OWNER_AUTH_TOKEN, otherOwnerId,
+				LocalDateTime.now(), LocalDateTime.now().plusDays(1));
+
+		mockMvc.perform(get("/api/smartthings/cages/{cageId}/readings/latest", cageId)
+					.header("Authorization", "Bearer " + OTHER_OWNER_AUTH_TOKEN))
 				.andExpect(status().isForbidden());
 	}
 
@@ -249,6 +268,11 @@ class SmartThingsSensorIntegrationTest {
 
 		disconnect(cageId, CONTACT_DEVICE_ID)
 				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/smartthings/cages/{cageId}/readings/latest", cageId)
+					.header("Authorization", "Bearer " + AUTH_TOKEN))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.readings.length()").value(0));
 
 		assertThat(jdbcTemplate.queryForObject(
 				"select active from public.smartthings_device where smartthings_device_id = ?",

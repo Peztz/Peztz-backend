@@ -26,6 +26,10 @@ public interface SensorReadingRepository extends JpaRepository<SensorReading, Lo
 
 	List<SensorReading> findByCageIdOrderByMeasuredAtDesc(UUID cageId, Pageable pageable);
 
+	List<SensorReading> findByCageIdAndDeviceActiveTrueOrderByMeasuredAtDesc(
+			UUID cageId,
+			Pageable pageable);
+
 	List<SensorReading> findByCageIdAndMeasuredAtBetweenOrderByMeasuredAtDesc(
 			UUID cageId,
 			OffsetDateTime from,

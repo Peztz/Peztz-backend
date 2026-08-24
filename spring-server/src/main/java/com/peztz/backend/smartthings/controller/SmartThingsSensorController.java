@@ -90,7 +90,7 @@ public class SmartThingsSensorController {
 
 	@Operation(
 			summary = "케이지 센서 최신 측정값 조회",
-			description = "케이지에 연결된 센서의 속성별 최신 측정값을 조회합니다.")
+			description = "관리자 또는 해당 케이지에 입실 중인 보호자가 활성 센서의 속성별 최신 측정값을 조회합니다.")
 	@GetMapping("/cages/{cageId}/readings/latest")
 	public ResponseEntity<CageSensorLatestResponse> findLatest(
 			@Parameter(hidden = true)

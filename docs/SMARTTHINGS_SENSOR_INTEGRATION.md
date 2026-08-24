@@ -181,6 +181,11 @@ GET /api/smartthings/cages/{cageId}/readings/latest
 Authorization: Bearer {peztzAccessToken}
 ```
 
+System and facility managers can read the latest active sensor values for an
+authorized cage. An owner can read them only while that owner has an active
+admission session for the cage. Inactive device mappings are excluded, while
+their historical readings remain stored.
+
 ### 6. Read cage sensor history
 
 ```http
@@ -191,9 +196,9 @@ Authorization: Bearer {peztzAccessToken}
 Optional `from` and `to` values must be supplied together as ISO-8601 timestamps.
 The maximum `limit` is 500.
 
-Device metadata and raw sensor reading endpoints are restricted to system and
-facility managers. Owners receive derived sensor events through the existing
-session log and report APIs instead of accessing SmartThings device details.
+Device metadata and sensor history endpoints are restricted to system and
+facility managers. Owners can read only the latest active sensor values for
+their current admission cage, together with derived sensor events and reports.
 
 ## Derived session events
 
