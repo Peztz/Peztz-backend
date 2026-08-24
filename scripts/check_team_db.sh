@@ -36,7 +36,8 @@ with required_tables(table_name, relation_name) as (
     ('users', 'public.users'),
     ('Pets', 'public."Pets"'),
     ('access_session', 'public.access_session'),
-    ('pet_logs', 'public.pet_logs')
+    ('pet_logs', 'public.pet_logs'),
+    ('sensor_reading', 'public.sensor_reading')
 )
 select table_name,
        case when to_regclass(relation_name) is null then 'MISSING' else 'OK' end as status
@@ -58,7 +59,11 @@ with required_columns(table_name, column_name) as (
     ('pet_logs', 'session_id'),
     ('pet_logs', 'log_type'),
     ('pet_logs', 'data'),
-    ('pet_logs', 'created_at')
+    ('pet_logs', 'created_at'),
+    ('sensor_reading', 'session_id'),
+    ('sensor_reading', 'attribute'),
+    ('sensor_reading', 'numeric_value'),
+    ('sensor_reading', 'measured_at')
 )
 select required.table_name,
        required.column_name,
@@ -72,6 +77,21 @@ order by required.table_name, required.column_name;
 
 select case
          when to_regclass('public.daily_report') is null then 'MIGRATION_REQUIRED'
+         when not exists (
+           select 1
+           from information_schema.columns
+           where table_schema = 'public'
+             and table_name = 'daily_report'
+             and column_name = 'generation_token'
+             and udt_name = 'uuid'
+         ) then 'MIGRATION_REQUIRED'
+         when not exists (
+           select 1
+           from pg_constraint constraint_definition
+           where constraint_definition.conrelid = to_regclass('public.daily_report')
+             and constraint_definition.conname = 'ck_daily_report_status'
+             and pg_get_constraintdef(constraint_definition.oid) like '%GENERATING%'
+         ) then 'MIGRATION_REQUIRED'
          else 'READY'
        end as daily_report_schema;
 

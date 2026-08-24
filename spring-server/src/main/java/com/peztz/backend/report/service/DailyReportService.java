@@ -3,10 +3,14 @@ package com.peztz.backend.report.service;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -24,15 +28,11 @@ import com.peztz.backend.auth.service.AuthService;
 import com.peztz.backend.integration.fastapi.FastApiReportClient;
 import com.peztz.backend.integration.fastapi.FastApiReportGenerationRequest;
 import com.peztz.backend.integration.fastapi.FastApiReportGenerationResponse;
-import com.peztz.backend.log.entity.SessionLog;
-import com.peztz.backend.log.repository.SessionLogRepository;
-import com.peztz.backend.pet.entity.Pet;
 import com.peztz.backend.pet.repository.PetRepository;
 import com.peztz.backend.report.dto.BehaviorCardResponse;
 import com.peztz.backend.report.dto.DailyReportResponse;
 import com.peztz.backend.report.dto.EnvironmentCardResponse;
 import com.peztz.backend.report.entity.DailyReport;
-import com.peztz.backend.report.repository.DailyReportRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -40,17 +40,18 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class DailyReportService {
 
+	public static final String STATUS_GENERATING = "GENERATING";
 	public static final String STATUS_READY = "READY";
 	public static final String STATUS_FAILED = "FAILED";
 	private static final int MAX_EVENTS_FOR_AI = 200;
 	private static final Set<String> RISK_LEVELS = Set.of("NORMAL", "ATTENTION", "URGENT");
 
-	private final SessionLogRepository sessionLogRepository;
 	private final PetRepository petRepository;
-	private final DailyReportRepository dailyReportRepository;
 	private final AdmissionSessionRepository admissionSessionRepository;
 	private final AuthService authService;
 	private final AdmissionSessionService admissionSessionService;
+	private final DailyReportSourceService sourceService;
+	private final DailyReportStore reportStore;
 	private final FastApiReportClient fastApiReportClient;
 	private final ObjectMapper objectMapper;
 
@@ -60,23 +61,30 @@ public class DailyReportService {
 	@Value("${peztz.report.retry-after-minutes:10}")
 	private long retryAfterMinutes;
 
+	@Value("${peztz.report.generation-lease-seconds:210}")
+	private long generationLeaseSeconds;
+
+	@Value("${peztz.report.generation-wait-seconds:220}")
+	private long generationWaitSeconds;
+
+	@Value("${peztz.report.generation-poll-millis:500}")
+	private long generationPollMillis;
+
 	@Value("${peztz.report.model-label:${OPENAI_MODEL:gpt-5-mini}}")
 	private String modelLabel;
 
-	@Transactional
 	public DailyReportResponse getByPet(String authorization, UUID petId, LocalDate date) {
 		AppUser owner = authService.requireUser(authorization);
-		Pet pet = petRepository.findByIdAndOwnerId(petId, owner.getId())
+		petRepository.findByIdAndOwnerId(petId, owner.getId())
 				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found"));
 		validateDate(date);
-		return getOrGenerate(pet, date);
+		return getOrGenerate(petId, date);
 	}
 
-	@Transactional
 	public DailyReportResponse getBySession(String authorization, Long sessionId, LocalDate date) {
 		AdmissionSession session = admissionSessionService.getOwnedSession(authorization, sessionId);
 		validateDate(date);
-		return getOrGenerate(session.getPet(), date);
+		return getOrGenerate(session.getPet().getId(), date);
 	}
 
 	@Transactional(readOnly = true)
@@ -85,31 +93,54 @@ public class DailyReportService {
 		return admissionSessionRepository.findPetIdsWithSessionOverlapping(range.start(), range.endExclusive());
 	}
 
-	@Transactional
 	public DailyReportResponse generateScheduledReport(UUID petId, LocalDate date) {
-		return petRepository.findById(petId)
-				.map(pet -> getOrGenerate(pet, date))
-				.orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found"));
+		if (!petRepository.existsById(petId)) {
+			throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Pet not found");
+		}
+		return getOrGenerate(petId, date);
 	}
 
-	private DailyReportResponse getOrGenerate(Pet pet, LocalDate date) {
-		DailyReport existing = dailyReportRepository.findByPetIdAndReportDate(pet.getId(), date).orElse(null);
+	private DailyReportResponse getOrGenerate(UUID petId, LocalDate date) {
 		DateRange range = dateRange(date);
-		List<SessionLog> logs = sessionLogRepository.findByPetIdAndCreatedAtRange(
-				pet.getId(), range.start(), range.endExclusive());
-		ReportStatistics statistics = calculateStatistics(logs);
-		if (existing != null && !shouldRegenerate(existing, statistics)) {
-			return toResponse(existing);
+		DailyReportSource source = sourceService.load(petId, range.start(), range.endExclusive());
+		DailyReportStatistics statistics = calculateStatistics(source);
+		OffsetDateTime now = OffsetDateTime.now();
+
+		Optional<DailyReportClaim> claim = reportStore.tryClaim(
+				petId,
+				date,
+				statistics,
+				now,
+				now.minusMinutes(retryAfterMinutes),
+				now.minusSeconds(generationLeaseSeconds));
+		if (claim.isPresent()) {
+			return generateAndComplete(claim.orElseThrow(), source, date, statistics);
 		}
 
+		DailyReport existing = reportStore.findByPetAndDate(petId, date)
+				.orElseThrow(() -> new ResponseStatusException(
+						HttpStatus.SERVICE_UNAVAILABLE, "Daily report claim is temporarily unavailable"));
+		if (!STATUS_GENERATING.equals(existing.getStatus())) {
+			return toResponse(existing);
+		}
+		return waitForCompletedReport(existing.getId());
+	}
+
+	private DailyReportResponse generateAndComplete(
+			DailyReportClaim claim,
+			DailyReportSource source,
+			LocalDate date,
+			DailyReportStatistics statistics) {
 		FastApiReportGenerationResponse content;
 		String status = STATUS_READY;
 		String errorMessage = null;
-		if (logs.isEmpty()) {
+		boolean hasSourceData = statistics.totalLogCount() > 0;
+
+		if (!hasSourceData) {
 			content = noDataContent();
 		} else {
 			try {
-				content = fastApiReportClient.generate(toGenerationRequest(pet, date, statistics, logs));
+				content = fastApiReportClient.generate(toGenerationRequest(source, date, statistics));
 			} catch (RuntimeException exception) {
 				status = STATUS_FAILED;
 				errorMessage = shortError(exception);
@@ -117,44 +148,89 @@ public class DailyReportService {
 			}
 		}
 
-		DailyReport report = existing == null ? new DailyReport() : existing;
-		report.setPet(pet);
-		report.setReportDate(date);
-		report.setStatus(status);
-		report.setTotalLogCount(statistics.totalLogCount());
-		report.setSensorLogCount(statistics.sensorLogCount());
-		report.setAverageTemperature(statistics.averageTemperature());
-		report.setAverageHumidity(statistics.averageHumidity());
-		report.setDoorOpenCount(statistics.doorOpenCount());
-		report.setLowLightCount(statistics.lowLightCount());
-		report.setContent(objectMapper.convertValue(content, new TypeReference<Map<String, Object>>() { }));
-		report.setModelName(logs.isEmpty() ? null : modelLabel);
-		report.setErrorMessage(errorMessage);
-		report.setGeneratedAt(OffsetDateTime.now(ZoneId.of(reportTimeZone)).withNano(0));
-
-		return toResponse(dailyReportRepository.saveAndFlush(report));
+		boolean completed = reportStore.complete(
+				claim,
+				status,
+				objectMapper.convertValue(content, new TypeReference<Map<String, Object>>() { }),
+				hasSourceData ? modelLabel : null,
+				errorMessage,
+				OffsetDateTime.now(ZoneId.of(reportTimeZone)).withNano(0));
+		if (!completed) {
+			return waitForCompletedReport(claim.reportId());
+		}
+		return reportStore.findById(claim.reportId())
+				.map(this::toResponse)
+				.orElseThrow(() -> new IllegalStateException("Completed daily report was not found"));
 	}
 
-	private boolean shouldRegenerate(DailyReport report, ReportStatistics statistics) {
-		if (STATUS_READY.equals(report.getStatus())) {
-			return report.getTotalLogCount() != statistics.totalLogCount();
-		}
-		if (report.getUpdatedAt() == null) {
-			return true;
-		}
-		return report.getUpdatedAt().isBefore(OffsetDateTime.now().minusMinutes(retryAfterMinutes));
+	private DailyReportResponse waitForCompletedReport(UUID reportId) {
+		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(generationWaitSeconds);
+		do {
+			Optional<DailyReport> report = reportStore.findById(reportId);
+			if (report.isPresent() && !STATUS_GENERATING.equals(report.orElseThrow().getStatus())) {
+				return toResponse(report.orElseThrow());
+			}
+			sleepBeforePolling();
+		} while (System.nanoTime() < deadline);
+
+		throw new ResponseStatusException(
+				HttpStatus.SERVICE_UNAVAILABLE,
+				"Daily report is still generating; retry shortly");
 	}
 
-	private ReportStatistics calculateStatistics(List<SessionLog> logs) {
-		long sensorCount = logs.stream().filter(log -> "SENSOR".equals(log.getType())).count();
-		long doorOpenCount = logs.stream().filter(log -> "DOOR_OPEN".equals(log.getType())).count();
-		long lowLightCount = logs.stream().filter(log -> "LOW_LIGHT".equals(log.getType())).count();
-		Double averageTemperature = roundedAverage(logs.stream()
-				.map(SessionLog::getTemperature).filter(value -> value != null).toList());
-		Double averageHumidity = roundedAverage(logs.stream()
-				.map(SessionLog::getHumidity).filter(value -> value != null).toList());
-		return new ReportStatistics(
-				logs.size(), sensorCount, averageTemperature, averageHumidity, doorOpenCount, lowLightCount);
+	private void sleepBeforePolling() {
+		try {
+			Thread.sleep(generationPollMillis);
+		} catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			throw new ResponseStatusException(
+					HttpStatus.SERVICE_UNAVAILABLE, "Daily report wait was interrupted", exception);
+		}
+	}
+
+	private DailyReportStatistics calculateStatistics(DailyReportSource source) {
+		List<Double> temperatures = new ArrayList<>();
+		List<Double> humidities = new ArrayList<>();
+		long petLogSensorCount = 0;
+		long doorOpenCount = 0;
+		long lowLightCount = 0;
+
+		for (DailyReportSource.LogObservation log : source.logs()) {
+			if ("SENSOR".equals(log.type())) {
+				petLogSensorCount++;
+			}
+			if ("DOOR_OPEN".equals(log.type())) {
+				doorOpenCount++;
+			}
+			if ("LOW_LIGHT".equals(log.type())) {
+				lowLightCount++;
+			}
+			addIfPresent(temperatures, numberValue(log.data().get("temperature")));
+			addIfPresent(humidities, numberValue(log.data().get("humidity")));
+		}
+
+		for (DailyReportSource.SensorMeasurement measurement : source.sensorMeasurements()) {
+			if ("temperature".equalsIgnoreCase(measurement.attribute())) {
+				temperatures.add(measurement.numericValue());
+			} else if ("humidity".equalsIgnoreCase(measurement.attribute())) {
+				humidities.add(measurement.numericValue());
+			}
+		}
+
+		long smartThingsSensorCount = source.sensorMeasurements().size();
+		return new DailyReportStatistics(
+				source.logs().size() + smartThingsSensorCount,
+				petLogSensorCount + smartThingsSensorCount,
+				roundedAverage(temperatures),
+				roundedAverage(humidities),
+				doorOpenCount,
+				lowLightCount);
+	}
+
+	private void addIfPresent(List<Double> values, Double value) {
+		if (value != null) {
+			values.add(value);
+		}
 	}
 
 	private Double roundedAverage(List<Double> values) {
@@ -166,16 +242,40 @@ public class DailyReportService {
 	}
 
 	private FastApiReportGenerationRequest toGenerationRequest(
-			Pet pet, LocalDate date, ReportStatistics statistics, List<SessionLog> logs) {
-		int fromIndex = Math.max(0, logs.size() - MAX_EVENTS_FOR_AI);
-		List<FastApiReportGenerationRequest.Event> events = logs.subList(fromIndex, logs.size()).stream()
-				.map(this::toEvent)
+			DailyReportSource source,
+			LocalDate date,
+			DailyReportStatistics statistics) {
+		List<TimedEvent> timedEvents = new ArrayList<>();
+		for (DailyReportSource.LogObservation log : source.logs()) {
+			timedEvents.add(new TimedEvent(
+					log.occurredAt(),
+					new FastApiReportGenerationRequest.Event(
+							log.type(),
+							log.occurredAt().toString(),
+							log.durationSeconds(),
+							stringValue(log.data().get("message")),
+							numberValue(log.data().get("temperature")),
+							numberValue(log.data().get("humidity")),
+							numberValue(log.data().get("confidence")))));
+		}
+		for (DailyReportSource.SensorMeasurement measurement : source.sensorMeasurements()) {
+			timedEvents.add(new TimedEvent(
+					measurement.measuredAt(),
+					toSensorEvent(measurement)));
+		}
+
+		timedEvents.sort(Comparator.comparing(TimedEvent::occurredAt));
+		int fromIndex = Math.max(0, timedEvents.size() - MAX_EVENTS_FOR_AI);
+		List<FastApiReportGenerationRequest.Event> events = timedEvents.subList(fromIndex, timedEvents.size()).stream()
+				.map(TimedEvent::event)
 				.toList();
+
+		DailyReportSource.PetProfile pet = source.pet();
 		return new FastApiReportGenerationRequest(
 				date,
-				pet.getName(),
-				pet.getBreed(),
-				pet.getBirthDate(),
+				pet.name(),
+				pet.breed(),
+				pet.birthDate(),
 				new FastApiReportGenerationRequest.Statistics(
 						statistics.totalLogCount(),
 						statistics.sensorLogCount(),
@@ -186,15 +286,19 @@ public class DailyReportService {
 				events);
 	}
 
-	private FastApiReportGenerationRequest.Event toEvent(SessionLog log) {
+	private FastApiReportGenerationRequest.Event toSensorEvent(
+			DailyReportSource.SensorMeasurement measurement) {
+		boolean temperature = "temperature".equalsIgnoreCase(measurement.attribute());
+		String type = temperature ? "SENSOR_TEMPERATURE" : "SENSOR_HUMIDITY";
+		String label = temperature ? "SmartThings 온도 측정" : "SmartThings 습도 측정";
 		return new FastApiReportGenerationRequest.Event(
-				log.getType(),
-				log.getCreatedAt().toString(),
-				log.getEventDurationSeconds(),
-				log.getMessage(),
-				log.getTemperature(),
-				log.getHumidity(),
-				numberValue(log.getData() == null ? null : log.getData().get("confidence")));
+				type,
+				measurement.measuredAt().toString(),
+				null,
+				label,
+				temperature ? measurement.numericValue() : null,
+				temperature ? null : measurement.numericValue(),
+				null);
 	}
 
 	private Double numberValue(Object value) {
@@ -211,9 +315,13 @@ public class DailyReportService {
 		return null;
 	}
 
+	private String stringValue(Object value) {
+		return value == null ? null : value.toString();
+	}
+
 	private FastApiReportGenerationResponse noDataContent() {
 		return new FastApiReportGenerationResponse(
-				"이 날짜에는 분석할 수 있는 관찰 기록이 없습니다.",
+				"이 날짜에는 분석할 수 있는 관찰 또는 환경 측정 기록이 없습니다.",
 				List.of(),
 				new FastApiReportGenerationResponse.EnvironmentCard(
 						"생활 환경", "환경 센서 측정값이 충분하지 않습니다."),
@@ -225,7 +333,7 @@ public class DailyReportService {
 
 	private FastApiReportGenerationResponse failedContent() {
 		return new FastApiReportGenerationResponse(
-				"관찰 통계는 수집되었지만 AI 분석을 완료하지 못했습니다.",
+				"관찰 및 환경 통계는 수집되었지만 AI 분석을 완료하지 못했습니다.",
 				List.of(),
 				new FastApiReportGenerationResponse.EnvironmentCard(
 						"생활 환경", "아래의 수집 통계를 확인해 주세요."),
@@ -300,12 +408,8 @@ public class DailyReportService {
 	private record DateRange(OffsetDateTime start, OffsetDateTime endExclusive) {
 	}
 
-	private record ReportStatistics(
-			long totalLogCount,
-			long sensorLogCount,
-			Double averageTemperature,
-			Double averageHumidity,
-			long doorOpenCount,
-			long lowLightCount) {
+	private record TimedEvent(
+			OffsetDateTime occurredAt,
+			FastApiReportGenerationRequest.Event event) {
 	}
 }

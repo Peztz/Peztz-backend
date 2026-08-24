@@ -1,8 +1,11 @@
 package com.peztz.backend.integration.fastapi;
 
+import java.time.Duration;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -21,11 +24,23 @@ public class HttpFastApiReportClient implements FastApiReportClient {
 	public HttpFastApiReportClient(
 			RestClient.Builder restClientBuilder,
 			@Value("${peztz.fastapi.base-url:}") String baseUrl,
-			@Value("${peztz.fastapi.internal-api-key:}") String internalApiKey) {
+			@Value("${peztz.fastapi.internal-api-key:}") String internalApiKey,
+			@Value("${peztz.fastapi.report-connect-timeout-millis:5000}") long connectTimeoutMillis,
+			@Value("${peztz.fastapi.report-read-timeout-millis:200000}") long readTimeoutMillis) {
 		if (!StringUtils.hasText(baseUrl)) {
 			throw new IllegalStateException("peztz.fastapi.base-url is required in http mode");
 		}
-		this.restClient = restClientBuilder.baseUrl(removeTrailingSlash(baseUrl)).build();
+		if (connectTimeoutMillis <= 0 || readTimeoutMillis <= 0) {
+			throw new IllegalStateException("FastAPI report timeouts must be positive");
+		}
+
+		SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+		requestFactory.setConnectTimeout(Duration.ofMillis(connectTimeoutMillis));
+		requestFactory.setReadTimeout(Duration.ofMillis(readTimeoutMillis));
+		this.restClient = restClientBuilder
+				.requestFactory(requestFactory)
+				.baseUrl(removeTrailingSlash(baseUrl))
+				.build();
 		this.internalApiKey = internalApiKey;
 	}
 

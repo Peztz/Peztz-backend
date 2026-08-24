@@ -5,8 +5,10 @@
 - 매일 `Asia/Seoul` 기준 00:10에 전날 리포트를 자동 생성합니다.
 - 자동 생성이 빠졌다면 보호자가 조회할 때 즉시 보충 생성합니다.
 - 같은 반려동물과 날짜의 리포트는 `daily_report`에 한 건만 저장합니다.
+- 최초 동시 요청은 PostgreSQL 원자적 claim을 사용해 한 요청만 OpenAI를 호출합니다.
 - 실패 리포트는 통계 카드와 함께 `FAILED`로 저장하고 10분 이후 조회 시 재시도합니다.
-- 해당 날짜에 로그가 없으면 OpenAI를 호출하지 않고 데이터 부족 카드를 저장합니다.
+- `pet_logs`와 `sensor_reading`이 모두 없을 때만 OpenAI를 호출하지 않습니다.
+- SmartThings 온습도만 있는 날짜도 평균 온습도를 집계해 AI 리포트를 생성합니다.
 - 앱에는 마크다운 문자열 대신 구조화된 카드 JSON을 반환합니다.
 
 ## 데이터 흐름
@@ -14,16 +16,18 @@
 ```text
 Spring scheduler 또는 보호자 GET 요청
   -> Spring이 보호자 권한과 petId 검증
-  -> PostgreSQL에서 해당 날짜의 pet_logs 조회·집계
-  -> 이름·품종·생년월일과 분석에 필요한 로그 필드만 FastAPI에 전달
+  -> 짧은 읽기 트랜잭션으로 해당 날짜의 pet_logs와 sensor_reading 조회·집계
+  -> PostgreSQL upsert로 GENERATING claim 획득
+  -> 트랜잭션 밖에서 이름·품종·생년월일과 필요한 이벤트만 FastAPI에 전달
   -> FastAPI가 OpenAI Responses API Structured Outputs 호출
-  -> Spring이 daily_report에 저장
+  -> 별도의 짧은 쓰기 트랜잭션으로 READY 또는 FAILED 저장
   -> 앱에 카드형 JSON 반환
 ```
 
 FastAPI는 PostgreSQL에 직접 연결하지 않습니다. 이메일, 전화번호, 사용자 ID, 케이지
-접근 코드와 원본 센서 JSON은 OpenAI에 전달하지 않습니다. 한 요청에 전달하는 이벤트는
-최근 200건으로 제한하지만 전체 로그 수와 환경 통계는 모든 당일 로그를 기준으로 계산합니다.
+접근 코드와 원본 센서 JSON은 OpenAI에 전달하지 않습니다. 한 요청에 전달하는 관찰·온습도
+이벤트는 합쳐서 최근 200건으로 제한하지만 전체 수와 환경 통계는 모든 당일 데이터를
+기준으로 계산합니다. `totalLogCount`는 관찰 로그와 온습도 측정 건수의 합입니다.
 
 ## OpenAI 키 설정
 
@@ -40,10 +44,13 @@ OPENAI_API_KEY=CHANGE_ME_OPENAI_API_KEY
 OPENAI_MODEL=gpt-5-mini
 OPENAI_TIMEOUT_SECONDS=90
 OPENAI_MAX_RETRIES=1
+FASTAPI_REPORT_CONNECT_TIMEOUT_MILLIS=5000
+FASTAPI_REPORT_READ_TIMEOUT_MILLIS=200000
 ```
 
 구조화된 리포트는 일반 채팅보다 생성 시간이 길 수 있으므로 OpenAI 읽기 제한 시간은
 기본 90초로 설정합니다. 일시적인 연결 실패는 한 번만 재시도합니다.
+Spring의 FastAPI 읽기 제한 시간은 OpenAI 재시도 구간보다 긴 200초입니다.
 
 OpenAI 키가 비어 있어도 Spring과 FastAPI는 시작됩니다. 이 경우 카메라 등 다른 기능은
 사용할 수 있지만 AI 리포트는 `FAILED` 통계 카드로 반환됩니다.
@@ -55,6 +62,9 @@ DAILY_REPORT_SCHEDULING_ENABLED=true
 DAILY_REPORT_SCHEDULE_CRON=0 10 0 * * *
 DAILY_REPORT_TIME_ZONE=Asia/Seoul
 DAILY_REPORT_RETRY_AFTER_MINUTES=10
+DAILY_REPORT_GENERATION_LEASE_SECONDS=210
+DAILY_REPORT_GENERATION_WAIT_SECONDS=220
+DAILY_REPORT_GENERATION_POLL_MILLIS=500
 ```
 
 cron은 Spring의 6개 필드 형식 `초 분 시 일 월 요일`입니다. 기본값 `0 10 0 * * *`은
@@ -82,7 +92,8 @@ psql -h DB_HOST -U DB_USER -d PEZTZ \
 ```
 
 Spring은 `ddl-auto=validate`이므로 운영 애플리케이션을 배포하기 전에 마이그레이션을
-적용해야 합니다.
+적용해야 합니다. 이 파일은 내부 상태 `GENERATING`과 원자적 생성 소유권에 사용하는
+`generation_token`도 추가합니다.
 
 ## 로컬 Docker 실행
 
@@ -127,7 +138,7 @@ curl http://127.0.0.1:18000/health
 ## 로컬 테스트 데이터로 전체 흐름 검증
 
 팀 PostgreSQL을 사용할 수 없는 동안에는 로컬 Docker PostgreSQL에만 테스트 전용
-보호자, 반려동물, 입실 세션과 오늘 날짜 로그 8건을 넣을 수 있습니다.
+보호자, 반려동물, 입실 세션, 오늘 날짜 로그 8건과 전날의 온습도-only 측정 2건을 넣습니다.
 
 ```bash
 cd /Users/jun/Documents/GitHub/Peztz-backend
@@ -144,8 +155,8 @@ petId=22222222-2222-4222-8222-222222222222
 
 스크립트는 `infra/.env.local`의 로컬 DB 설정과 Docker Compose의 `postgres` 서비스만
 사용합니다. 팀·공유 DB를 대상으로 실행하지 않으며, 반복 실행 시 고정된 테스트 데이터만
-갱신합니다. 또한 오늘 날짜의 테스트 리포트를 삭제해 새 OpenAI 호출을 다시 검증할 수
-있게 합니다.
+갱신합니다. 또한 오늘과 전날의 테스트 리포트를 삭제해 새 OpenAI 호출을 다시 검증할 수
+있게 합니다. 전날을 선택하면 `pet_logs`가 전혀 없는 온습도-only 생성을 확인할 수 있습니다.
 
 프론트엔드는 위 계정으로 로그인한 뒤 `/owner/reports`에서 오늘 날짜를 조회합니다.
 CLI로 실제 OpenAI 호출까지 검증할 때는 로그인 응답의 토큰을 환경 변수로 전달합니다.
@@ -155,6 +166,16 @@ ACCESS_TOKEN='로그인으로 받은 토큰' \
 PET_ID='22222222-2222-4222-8222-222222222222' \
 REPORT_DATE="$(TZ=Asia/Seoul date +%F)" \
 ./scripts/verify_daily_report_e2e.sh
+```
+
+동시에 최초 요청 두 개를 보내 같은 `reportId`가 반환되는지 확인하려면 다음 스크립트를
+사용합니다. FastAPI 접근 로그의 생성 API가 한 줄인지도 함께 확인합니다.
+
+```bash
+ACCESS_TOKEN='로그인으로 받은 토큰' \
+PET_ID='22222222-2222-4222-8222-222222222222' \
+REPORT_DATE="$(TZ=Asia/Seoul date -v-1d +%F)" \
+./scripts/verify_daily_report_concurrency.sh
 ```
 
 OpenAI 키를 아직 준비하지 못했더라도 구조화된 `READY` 응답과 프론트 카드 레이아웃은

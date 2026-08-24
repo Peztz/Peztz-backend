@@ -76,6 +76,115 @@ on conflict (session_id) do update set
     created_at = excluded.created_at,
     ended_at = excluded.ended_at;
 
+-- A completed session on the previous day is intentionally sensor-only. It
+-- verifies that raw SmartThings temperature/humidity readings generate an AI
+-- report even when no pet_logs row exists for that date.
+insert into public.access_session (
+    session_id, user_id, pet_id, cage_id, access_code, status, created_at, ended_at
+)
+values (
+    -900002,
+    '11111111-1111-4111-8111-111111111111',
+    '22222222-2222-4222-8222-222222222222',
+    '33333333-3333-4333-8333-333333333333',
+    'LOCAL-REPORT-SENSOR-ONLY',
+    'ENDED',
+    ((((now() at time zone 'Asia/Seoul')::date - 1) + time '00:00') at time zone 'Asia/Seoul'),
+    ((((now() at time zone 'Asia/Seoul')::date - 1) + time '23:59') at time zone 'Asia/Seoul')
+)
+on conflict (session_id) do update set
+    user_id = excluded.user_id,
+    pet_id = excluded.pet_id,
+    cage_id = excluded.cage_id,
+    access_code = excluded.access_code,
+    status = excluded.status,
+    created_at = excluded.created_at,
+    ended_at = excluded.ended_at;
+
+insert into public.smartthings_device (
+    smartthings_device_mapping_id,
+    cage_id,
+    smartthings_device_id,
+    device_type,
+    label,
+    battery,
+    online,
+    active,
+    last_seen_at,
+    created_at,
+    updated_at
+)
+values (
+    '44444444-4444-4444-8444-444444444444',
+    '33333333-3333-4333-8333-333333333333',
+    'LOCAL-REPORT-TEMPERATURE-HUMIDITY',
+    'TEMPERATURE_HUMIDITY',
+    '로컬 온습도 센서',
+    90,
+    true,
+    true,
+    now(),
+    now(),
+    now()
+)
+on conflict (smartthings_device_mapping_id) do update set
+    cage_id = excluded.cage_id,
+    smartthings_device_id = excluded.smartthings_device_id,
+    device_type = excluded.device_type,
+    label = excluded.label,
+    battery = excluded.battery,
+    online = excluded.online,
+    active = excluded.active,
+    last_seen_at = excluded.last_seen_at,
+    updated_at = excluded.updated_at;
+
+delete from public.sensor_reading
+where smartthings_device_mapping_id = '44444444-4444-4444-8444-444444444444';
+
+insert into public.sensor_reading (
+    smartthings_device_mapping_id,
+    cage_id,
+    session_id,
+    capability,
+    attribute,
+    numeric_value,
+    string_value,
+    unit,
+    measured_at,
+    received_at,
+    source,
+    raw_payload
+)
+values
+    (
+        '44444444-4444-4444-8444-444444444444',
+        '33333333-3333-4333-8333-333333333333',
+        -900002,
+        'temperatureMeasurement',
+        'temperature',
+        23.4,
+        null,
+        'C',
+        ((((now() at time zone 'Asia/Seoul')::date - 1) + time '09:00') at time zone 'Asia/Seoul'),
+        now(),
+        'LOCAL_REPORT_DEMO',
+        '{"source":"local-report-sensor-only"}'::jsonb
+    ),
+    (
+        '44444444-4444-4444-8444-444444444444',
+        '33333333-3333-4333-8333-333333333333',
+        -900002,
+        'relativeHumidityMeasurement',
+        'humidity',
+        56.2,
+        null,
+        '%',
+        ((((now() at time zone 'Asia/Seoul')::date - 1) + time '09:00') at time zone 'Asia/Seoul'),
+        now(),
+        'LOCAL_REPORT_DEMO',
+        '{"source":"local-report-sensor-only"}'::jsonb
+    );
+
 delete from public.pet_logs
 where external_event_id like 'local-report-demo-%';
 
@@ -159,7 +268,10 @@ values
 
 delete from public.daily_report
 where pet_id = '22222222-2222-4222-8222-222222222222'
-  and report_date = (now() at time zone 'Asia/Seoul')::date;
+  and report_date in (
+      (now() at time zone 'Asia/Seoul')::date,
+      (now() at time zone 'Asia/Seoul')::date - 1
+  );
 
 commit;
 
@@ -171,3 +283,11 @@ select
 from public.pet_logs
 where external_event_id like 'local-report-demo-%'
 group by demo_email, demo_pet_id, demo_report_date;
+
+select
+    '22222222-2222-4222-8222-222222222222'::uuid as sensor_only_pet_id,
+    (now() at time zone 'Asia/Seoul')::date - 1 as sensor_only_report_date,
+    count(*) as seeded_sensor_reading_count
+from public.sensor_reading
+where smartthings_device_mapping_id = '44444444-4444-4444-8444-444444444444'
+group by sensor_only_pet_id, sensor_only_report_date;

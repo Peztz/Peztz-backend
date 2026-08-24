@@ -154,6 +154,7 @@ create table if not exists public.daily_report (
     report_id uuid primary key,
     pet_id uuid not null references public."Pets"(pet_id) on delete cascade,
     report_date date not null,
+    generation_token uuid,
     status varchar(20) not null,
     total_log_count bigint not null default 0 check (total_log_count >= 0),
     sensor_log_count bigint not null default 0 check (sensor_log_count >= 0),
@@ -168,8 +169,24 @@ create table if not exists public.daily_report (
     created_at timestamp with time zone not null,
     updated_at timestamp with time zone not null,
     constraint uq_daily_report_pet_date unique (pet_id, report_date),
-    constraint ck_daily_report_status check (status in ('READY', 'FAILED'))
+    constraint ck_daily_report_status check (status in ('GENERATING', 'READY', 'FAILED')),
+    constraint ck_daily_report_generation_token check (
+        status <> 'GENERATING' or generation_token is not null
+    )
 );
+
+alter table public.daily_report
+    add column if not exists generation_token uuid;
+
+alter table public.daily_report
+    drop constraint if exists ck_daily_report_status,
+    drop constraint if exists ck_daily_report_generation_token;
+
+alter table public.daily_report
+    add constraint ck_daily_report_status
+        check (status in ('GENERATING', 'READY', 'FAILED')),
+    add constraint ck_daily_report_generation_token
+        check (status <> 'GENERATING' or generation_token is not null);
 
 create index if not exists idx_daily_report_pet_date
     on public.daily_report(pet_id, report_date desc);
@@ -241,6 +258,7 @@ begin
             ('daily_report', 'report_id', 'uuid'),
             ('daily_report', 'pet_id', 'uuid'),
             ('daily_report', 'report_date', 'date'),
+            ('daily_report', 'generation_token', 'uuid'),
             ('daily_report', 'status', 'varchar'),
             ('daily_report', 'total_log_count', 'int8'),
             ('daily_report', 'sensor_log_count', 'int8'),

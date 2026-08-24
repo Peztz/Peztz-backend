@@ -52,6 +52,9 @@ public class DailyReport {
 	@Column(name = "report_date", nullable = false)
 	private LocalDate reportDate;
 
+	@Column(name = "generation_token")
+	private UUID generationToken;
+
 	@Column(nullable = false, length = 20)
 	private String status;
 

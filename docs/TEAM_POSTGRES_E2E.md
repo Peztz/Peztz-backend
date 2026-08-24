@@ -6,7 +6,7 @@
 다음 경로 전체가 동작하는지 확인합니다.
 
 ```text
-팀 PostgreSQL pet_logs
+팀 PostgreSQL pet_logs + sensor_reading
   -> Spring 권한 확인·날짜별 조회·통계 집계
   -> FastAPI 내부 인증 API
   -> OpenAI Responses API 구조화 출력
@@ -24,7 +24,7 @@
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`
 - 서버가 요구하는 `DB_SSLMODE` (`require`, `verify-full`, `prefer` 등)
 - VPN, SSH 터널 또는 접속 허용 IP 등록 여부
-- `public."Pets"`, `public.access_session`, `public.pet_logs` 스키마가 현재 코드와 같은지
+- `public."Pets"`, `public.access_session`, `public.pet_logs`, `public.sensor_reading` 스키마가 현재 코드와 같은지
 - `daily_report` 증분 마이그레이션 적용 권한과 적용 담당자
 - 실제 검증에 사용해도 되는 테스트 보호자 계정, `petId`, 로그가 존재하는 날짜
 
@@ -72,7 +72,8 @@ set +a
 ```
 
 이 스크립트는 `BEGIN READ ONLY`로 실행되며 행을 추가·수정·삭제하지 않습니다. 필수
-테이블·컬럼, DB 시간대, 최근 7일 로그 수와 `daily_report` 마이그레이션 상태를 확인합니다.
+테이블·컬럼, DB 시간대, 최근 7일 로그 수와 `daily_report.generation_token` 및
+`GENERATING` 제약을 포함한 마이그레이션 상태를 확인합니다.
 
 ## 3. 증분 마이그레이션
 
@@ -83,7 +84,8 @@ docs/sql/daily_report_migration.sql
 ```
 
 운영/공용 DB에는 `peztz_local_schema.sql`을 실행하지 않습니다. `daily_report_migration.sql`은
-기존 테이블을 다시 만들지 않고 리포트 저장 테이블과 인덱스만 추가합니다. Spring은
+기존 원본 테이블의 데이터를 바꾸지 않고 리포트 저장 테이블·원자적 claim 컬럼·인덱스만
+추가합니다. Spring은
 `ddl-auto=validate`이므로 이 마이그레이션이 없으면 시작을 거부하는 것이 정상입니다.
 
 ## 4. Spring과 FastAPI 실행
@@ -140,9 +142,19 @@ export SPRING_BASE_URL='http://127.0.0.1:18080'
 - Spring health가 정상인지
 - 인증된 사용자가 해당 반려동물에 접근할 수 있는지
 - 선택한 날짜에 실제 로그가 존재하는지
+- 온습도-only 날짜라면 `sensor_reading`만으로도 생성되는지
 - 응답이 구조화된 카드 스키마를 만족하는지
 - AI 결과 상태가 `READY`인지
 - 두 번째 조회가 같은 `reportId`를 반환해 DB 저장 결과를 재사용하는지
+
+동시 최초 요청 검증은 같은 환경변수로 다음을 실행합니다.
+
+```bash
+./scripts/verify_daily_report_concurrency.sh
+```
+
+두 응답의 `reportId`가 같아야 하며 같은 구간의 FastAPI 로그에는
+`POST /internal/reports/daily/generate`가 한 번만 있어야 합니다.
 
 FastAPI 내부 호출 기록과 오류는 다음 명령으로 확인합니다.
 
@@ -188,11 +200,10 @@ docker compose --env-file .env.team -f docker-compose.yml up -d spring
 
 완료 판정은 단순히 HTTP 200만 보는 것이 아닙니다.
 
-- 팀 PostgreSQL에서 읽은 로그 수와 API의 `totalLogCount`가 일치합니다.
+- 팀 PostgreSQL에서 읽은 관찰 로그와 온습도 측정 건수의 합이 API의 `totalLogCount`와 일치합니다.
 - FastAPI 로그에 내부 생성 API 요청이 기록됩니다.
 - 응답이 `READY`이고 카드 배열과 환경 카드가 유효합니다.
 - `daily_report`에 동일한 `reportId`가 저장됩니다.
 - 두 번째 조회는 OpenAI를 다시 호출하지 않고 저장 결과를 반환합니다.
 - 다른 사용자의 `petId` 조회는 노출 없이 `404`로 차단됩니다.
 - 프론트엔드는 같은 JSON을 별도 가공 없이 카드에 표시합니다.
-

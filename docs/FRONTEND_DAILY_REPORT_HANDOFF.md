@@ -33,6 +33,10 @@ Authorization: Bearer {accessToken}
 첫 조회에서 저장된 결과가 없으면 생성까지 최대 수십 초가 걸릴 수 있으므로 스켈레톤과
 명시적인 생성 중 문구를 표시합니다. 이후 조회는 DB 결과를 반환합니다.
 
+`totalLogCount`는 `pet_logs`와 SmartThings 온습도 측정 건수의 합이고,
+`sensorLogCount`에는 온습도 측정 건수가 포함됩니다. 따라서 온습도-only 날짜는
+`totalLogCount > 0`이며 데이터 없음 화면으로 분기하지 않습니다.
+
 ## TypeScript 계약
 
 ```ts

@@ -262,9 +262,13 @@ PostgreSQL에서 로그 조회, OpenAI 생성, `daily_report` 저장, 두 번째
 | `CORS_ALLOWED_ORIGINS` | 허용 프론트 URL 목록 | 쉼표 구분, 와일드카드 금지 |
 | `OPENAI_API_KEY` | 서버 전용 OpenAI 키 | 필수, Git 금지 |
 | `OPENAI_MODEL` | 리포트 모델 | `gpt-5-mini` |
+| `FASTAPI_REPORT_CONNECT_TIMEOUT_MILLIS` | Spring→FastAPI 연결 제한 | `5000` |
+| `FASTAPI_REPORT_READ_TIMEOUT_MILLIS` | Spring→FastAPI 응답 제한 | `200000` |
 | `DAILY_REPORT_SCHEDULING_ENABLED` | 자동 생성 활성화 | 최초 E2E `false`, 승인 후 `true` |
 | `DAILY_REPORT_SCHEDULE_CRON` | Spring 6필드 cron | `0 10 0 * * *` |
 | `DAILY_REPORT_TIME_ZONE` | 집계·스케줄 기준 | `Asia/Seoul` |
+| `DAILY_REPORT_GENERATION_LEASE_SECONDS` | 멈춘 생성 claim 회수 | `210` |
+| `DAILY_REPORT_GENERATION_WAIT_SECONDS` | 동시 요청 완료 대기 | `220` |
 
 전체 Docker 운영 절차는 [infra README](infra/README.md)를 참고합니다.
 
