@@ -4,9 +4,24 @@ import httpx
 from fastapi.testclient import TestClient
 
 import main
+import report_prompt
 
 
 client = TestClient(main.app)
+
+
+def test_daily_report_prompt_is_versioned_and_preserves_payload():
+    messages = report_prompt.build_daily_report_messages(
+        {"petName": "초코", "statistics": {"totalLogCount": 2}}
+    )
+
+    assert report_prompt.DAILY_REPORT_PROMPT_VERSION == "daily-report-v2"
+    assert messages[0]["role"] == "system"
+    assert "진단" in messages[0]["content"]
+    assert "daily-report-v2" in messages[1]["content"]
+    assert "Asia/Seoul(UTC+9)" in messages[0]["content"]
+    assert "긴 ISO 8601 문자열" in messages[0]["content"]
+    assert '"petName": "초코"' in messages[1]["content"]
 
 
 def test_device_event_without_pet_id_forwards_to_spring(monkeypatch):
@@ -179,3 +194,106 @@ def test_live_start_is_managed_by_raspberry_pi(monkeypatch):
     )
     assert response.status_code == 409
     assert response.json()["detail"] == "Live stream is managed by the Raspberry Pi systemd service"
+
+
+def test_daily_report_requires_internal_key(monkeypatch):
+    monkeypatch.setattr(main, "FASTAPI_INTERNAL_API_KEY", "test-fastapi-key")
+    monkeypatch.setattr(main, "OPENAI_API_KEY", "test-openai-key")
+
+    response = client.post(
+        "/internal/reports/daily/generate",
+        json={
+            "reportDate": "2026-08-22",
+            "petName": "초코",
+            "statistics": {
+                "totalLogCount": 0,
+                "sensorLogCount": 0,
+            },
+            "events": [],
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_daily_report_returns_structured_cards(monkeypatch):
+    monkeypatch.setattr(main, "FASTAPI_INTERNAL_API_KEY", "test-fastapi-key")
+    monkeypatch.setattr(main, "OPENAI_API_KEY", "test-openai-key")
+
+    def generate(request):
+        assert request.petName == "초코"
+        assert request.statistics.totalLogCount == 2
+        assert request.events[0].type == "DOOR_OPEN"
+        return main.DailyReportGenerationResponse(
+            summary="오늘은 전반적으로 안정적인 하루였습니다.",
+            behaviorCards=[
+                main.BehaviorCard(
+                    title="문 열림 감지",
+                    description="문 열림이 한 차례 감지되었습니다.",
+                    evidence=["09:10 DOOR_OPEN"],
+                )
+            ],
+            environmentCard=main.EnvironmentCard(
+                title="생활 환경",
+                description="평균 온도와 습도가 안정적이었습니다.",
+            ),
+            careTips=["물을 충분히 마시는지 확인해 주세요."],
+            riskLevel=main.RiskLevel.NORMAL,
+            warnings=[],
+            disclaimer="이 리포트는 진단이 아닌 관찰 데이터 요약입니다.",
+        )
+
+    monkeypatch.setattr(main, "_generate_openai_daily_report", generate)
+
+    response = client.post(
+        "/internal/reports/daily/generate",
+        headers={"X-Internal-Api-Key": "test-fastapi-key"},
+        json={
+            "reportDate": "2026-08-22",
+            "petName": "초코",
+            "breed": "Poodle",
+            "birthDate": "2022-03-01",
+            "statistics": {
+                "totalLogCount": 2,
+                "sensorLogCount": 1,
+                "averageTemperature": 25.2,
+                "averageHumidity": 61.0,
+                "doorOpenCount": 1,
+                "lowLightCount": 0,
+            },
+            "events": [
+                {
+                    "type": "DOOR_OPEN",
+                    "occurredAt": "2026-08-22T09:10:00+09:00",
+                    "message": "케이지 문 열림",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["riskLevel"] == "NORMAL"
+    assert payload["behaviorCards"][0]["title"] == "문 열림 감지"
+    assert payload["environmentCard"]["title"] == "생활 환경"
+
+
+def test_daily_report_reports_missing_openai_key(monkeypatch):
+    monkeypatch.setattr(main, "FASTAPI_INTERNAL_API_KEY", "test-fastapi-key")
+    monkeypatch.setattr(main, "OPENAI_API_KEY", "")
+
+    response = client.post(
+        "/internal/reports/daily/generate",
+        headers={"X-Internal-Api-Key": "test-fastapi-key"},
+        json={
+            "reportDate": "2026-08-22",
+            "petName": "초코",
+            "statistics": {
+                "totalLogCount": 0,
+                "sensorLogCount": 0,
+            },
+        },
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "OpenAI API key is not configured"

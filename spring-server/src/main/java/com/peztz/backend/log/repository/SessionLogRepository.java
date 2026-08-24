@@ -32,6 +32,19 @@ public interface SessionLogRepository extends JpaRepository<SessionLog, Long> {
 			@Param("start") OffsetDateTime start,
 			@Param("end") OffsetDateTime end);
 
+	@Query("""
+			select log
+			from SessionLog log
+			where log.session.pet.id = :petId
+			  and log.createdAt >= :start
+			  and log.createdAt < :endExclusive
+			order by log.createdAt asc
+			""")
+	List<SessionLog> findByPetIdAndCreatedAtRange(
+			@Param("petId") UUID petId,
+			@Param("start") OffsetDateTime start,
+			@Param("endExclusive") OffsetDateTime endExclusive);
+
 	Optional<SessionLog> findByExternalEventId(String externalEventId);
 
 	@Query("""

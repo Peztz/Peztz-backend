@@ -147,6 +147,33 @@ create index if not exists idx_sensor_reading_session_measured_at
 create index if not exists idx_sensor_reading_device_measured_at
     on public.sensor_reading(smartthings_device_mapping_id, measured_at desc);
 
+-- One immutable daily card report per pet and calendar date. Failed AI calls
+-- are also recorded so the application can return statistics immediately and
+-- retry after a short backoff without creating duplicate rows.
+create table if not exists public.daily_report (
+    report_id uuid primary key,
+    pet_id uuid not null references public."Pets"(pet_id) on delete cascade,
+    report_date date not null,
+    status varchar(20) not null,
+    total_log_count bigint not null default 0 check (total_log_count >= 0),
+    sensor_log_count bigint not null default 0 check (sensor_log_count >= 0),
+    average_temperature double precision,
+    average_humidity double precision,
+    door_open_count bigint not null default 0 check (door_open_count >= 0),
+    low_light_count bigint not null default 0 check (low_light_count >= 0),
+    content jsonb not null,
+    model_name varchar(100),
+    error_message varchar(500),
+    generated_at timestamp with time zone,
+    created_at timestamp with time zone not null,
+    updated_at timestamp with time zone not null,
+    constraint uq_daily_report_pet_date unique (pet_id, report_date),
+    constraint ck_daily_report_status check (status in ('READY', 'FAILED'))
+);
+
+create index if not exists idx_daily_report_pet_date
+    on public.daily_report(pet_id, report_date desc);
+
 -- AI abnormal behavior events reuse the existing pet_logs and pet_videos
 -- tables. The event clip URL and thumbnail URL stay in pet_videos; pet_logs
 -- identifies the camera and FastAPI retry key. created_at records the
@@ -211,6 +238,22 @@ begin
             ('sensor_reading', 'received_at', 'timestamptz'),
             ('sensor_reading', 'source', 'varchar'),
             ('sensor_reading', 'raw_payload', 'jsonb'),
+            ('daily_report', 'report_id', 'uuid'),
+            ('daily_report', 'pet_id', 'uuid'),
+            ('daily_report', 'report_date', 'date'),
+            ('daily_report', 'status', 'varchar'),
+            ('daily_report', 'total_log_count', 'int8'),
+            ('daily_report', 'sensor_log_count', 'int8'),
+            ('daily_report', 'average_temperature', 'float8'),
+            ('daily_report', 'average_humidity', 'float8'),
+            ('daily_report', 'door_open_count', 'int8'),
+            ('daily_report', 'low_light_count', 'int8'),
+            ('daily_report', 'content', 'jsonb'),
+            ('daily_report', 'model_name', 'varchar'),
+            ('daily_report', 'error_message', 'varchar'),
+            ('daily_report', 'generated_at', 'timestamptz'),
+            ('daily_report', 'created_at', 'timestamptz'),
+            ('daily_report', 'updated_at', 'timestamptz'),
             ('pet_logs', 'camera_id', 'uuid'),
             ('pet_logs', 'external_event_id', 'varchar'),
             ('pet_logs', 'event_ended_at', 'timestamptz'),

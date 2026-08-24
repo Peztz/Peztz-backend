@@ -1,5 +1,6 @@
 package com.peztz.backend.admission.repository;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -56,4 +57,14 @@ public interface AdmissionSessionRepository extends JpaRepository<AdmissionSessi
 	Optional<AdmissionSession> findByIdAndFacilityId(
 			@Param("sessionId") Long sessionId,
 			@Param("facilityId") UUID facilityId);
+
+	@Query("""
+			select distinct session.pet.id
+			from AdmissionSession session
+			where session.createdAt < :endExclusive
+			  and (session.endedAt is null or session.endedAt >= :start)
+			""")
+	List<UUID> findPetIdsWithSessionOverlapping(
+			@Param("start") OffsetDateTime start,
+			@Param("endExclusive") OffsetDateTime endExclusive);
 }
