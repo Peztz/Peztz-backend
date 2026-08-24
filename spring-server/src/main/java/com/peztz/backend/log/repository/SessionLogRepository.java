@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,6 +15,20 @@ import com.peztz.backend.log.entity.SessionLog;
 public interface SessionLogRepository extends JpaRepository<SessionLog, Long> {
 
 	List<SessionLog> findBySessionIdOrderByCreatedAtDesc(Long sessionId);
+
+	@Query("""
+			select log
+			from SessionLog log
+			join fetch log.session session
+			join fetch session.cage cage
+			join fetch session.pet pet
+			left join fetch log.camera camera
+			where cage.facility.id = :facilityId
+			order by log.createdAt desc
+			""")
+	List<SessionLog> findByFacilityIdOrderByCreatedAtDesc(
+			@Param("facilityId") UUID facilityId,
+			Pageable pageable);
 
 	List<SessionLog> findBySessionIdAndCreatedAtBetweenOrderByCreatedAtAsc(
 			Long sessionId,
