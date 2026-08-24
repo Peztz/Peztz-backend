@@ -15,12 +15,15 @@ def test_daily_report_prompt_is_versioned_and_preserves_payload():
         {"petName": "초코", "statistics": {"totalLogCount": 2}}
     )
 
-    assert report_prompt.DAILY_REPORT_PROMPT_VERSION == "daily-report-v2"
+    assert report_prompt.DAILY_REPORT_PROMPT_VERSION == "daily-report-v3"
     assert messages[0]["role"] == "system"
     assert "진단" in messages[0]["content"]
-    assert "daily-report-v2" in messages[1]["content"]
+    assert "daily-report-v3" in messages[1]["content"]
     assert "Asia/Seoul(UTC+9)" in messages[0]["content"]
     assert "긴 ISO 8601 문자열" in messages[0]["content"]
+    assert "반복해서 걷는 행동" in messages[0]["content"]
+    assert "기술 용어" in messages[0]["content"]
+    assert "오후 7시 55분" in messages[0]["content"]
     assert '"petName": "초코"' in messages[1]["content"]
 
 
