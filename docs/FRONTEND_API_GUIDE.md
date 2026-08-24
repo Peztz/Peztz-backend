@@ -169,6 +169,11 @@ GET    /api/owners/me/cages
 
 ## 세션 로그·리포트 API
 
+일일 리포트 화면만 구현하는 프론트엔드 담당자는 먼저
+[프론트엔드 일일 리포트 인계 문서](FRONTEND_DAILY_REPORT_HANDOFF.md)의 TypeScript 타입,
+책임 분리와 화면 상태 계약을 사용하세요. OpenAI API 키와 프롬프트는 프론트엔드에
+포함하지 않습니다.
+
 ```text
 GET  /api/admission-sessions/{sessionId}/logs
 POST /api/admission-sessions/{sessionId}/logs
@@ -176,6 +181,25 @@ POST /api/admission-sessions/{sessionId}/logs
 GET  /api/reports/daily?petId={petId}&date=YYYY-MM-DD
 GET  /api/admission-sessions/{sessionId}/daily-report?date=YYYY-MM-DD
 ```
+
+일일 리포트는 매일 00:10(Asia/Seoul)에 전날 데이터로 자동 생성됩니다. 자동 생성이
+누락된 날짜는 보호자가 처음 조회할 때 보충 생성됩니다. 프론트는 마크다운을 파싱하지
+않고 다음 구조화 필드를 카드 컴포넌트에 직접 연결합니다.
+
+| 필드 | UI 용도 |
+| --- | --- |
+| `status` | `READY`이면 정상 카드, `FAILED`이면 통계와 재시도 안내 표시 |
+| `summary` | 상단 오늘의 요약 카드 |
+| `behaviorCards[]` | 행동별 제목·설명·근거 카드 |
+| `environmentCard` | 평균 온도·습도·문 열림·저조도 통합 카드 |
+| `careTips[]` | 보호자 체크리스트 |
+| `riskLevel` | `NORMAL`, `ATTENTION`, `URGENT` 배지 |
+| `warnings[]` | 데이터 부족·AI 장애·주의 메시지 |
+| `disclaimer` | 모든 리포트 하단에 항상 노출 |
+
+`FAILED`여도 `totalLogCount`, `sensorLogCount`, 평균 온도·습도와 환경 이벤트 수는
+정상적인 DB 집계값입니다. 프론트는 리포트 전체를 오류 화면으로 대체하지 말고 통계
+카드를 유지한 채 AI 분석 재시도 안내를 표시합니다.
 
 일반 세션 로그 등록 요청 예시입니다.
 

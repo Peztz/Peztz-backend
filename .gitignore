@@ -17,3 +17,5 @@ __pycache__/
 build/
 infra/mediamtx/mediamtx.yml
 infra/.env
+infra/.env.local
+infra/.env.team

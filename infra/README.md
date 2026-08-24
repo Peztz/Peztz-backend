@@ -24,6 +24,17 @@ cp .env.example .env
 `.env`에는 DB 비밀번호와 내부 API 키를 입력합니다. 이 파일은 Git에 커밋하지 않습니다.
 MediaMTX 설정과 실행 방법은 [MediaMTX README](mediamtx/README.md)를 참고합니다.
 
+AI 리포트와 로컬 PostgreSQL까지 한 번에 실행할 때는
+[`docs/AI_DAILY_REPORT.md`](../docs/AI_DAILY_REPORT.md)의 로컬 Docker 절차와
+`docker-compose.local.yml`을 사용합니다. 로컬 전체 스키마는 새 PostgreSQL 볼륨을
+처음 초기화할 때만 적용됩니다.
+
+팀원이 관리하는 원격 PostgreSQL의 실제 데이터를 검증할 때는
+[`infra/.env.team.example`](.env.team.example)을 `.env.team`으로 복사하고
+[`팀 PostgreSQL E2E 문서`](../docs/TEAM_POSTGRES_E2E.md)를 따릅니다. 원격 DB 모드에서는
+`docker-compose.local.yml`을 함께 지정하지 않으며, 최초 수동 검증이 끝날 때까지
+`DAILY_REPORT_SCHEDULING_ENABLED=false`를 유지합니다.
+
 GCP 운영 서버의 `infra/.env`는 다음 주소와 포트를 사용합니다.
 
 ```text
@@ -112,6 +123,9 @@ FastAPI -> Spring: http://spring:8080
 FastAPI -> MediaMTX: http://mediamtx:9997
 Spring/FastAPI -> 호스트 PostgreSQL: host.docker.internal:5432
 ```
+
+원격 PostgreSQL은 `DB_HOST`, `DB_PORT`, `DB_SSLMODE`로 설정합니다. 프론트엔드 개발·배포
+주소는 쉼표로 구분한 `CORS_ALLOWED_ORIGINS`에 명시적으로 등록합니다.
 
 ## 주의사항
 

@@ -30,7 +30,7 @@ public class DailyReportController {
 
 	private final DailyReportService dailyReportService;
 
-	@Operation(summary = "반려동물 일일 리포트 조회", description = "해당 날짜의 모든 세션 로그를 기반으로 집계합니다. 로그가 없어도 빈 요약을 반환합니다.",
+	@Operation(summary = "반려동물 일일 리포트 조회", description = "저장된 카드형 AI 리포트를 반환하고, 아직 생성되지 않았다면 즉시 생성합니다.",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "조회 성공",
 							content = @Content(schema = @Schema(implementation = DailyReportResponse.class))),
@@ -47,7 +47,7 @@ public class DailyReportController {
 		return ResponseEntity.ok(dailyReportService.getByPet(authorization, petId, date));
 	}
 
-	@Operation(summary = "입실 세션 일일 리포트 조회", description = "해당 날짜의 세션 로그만 기반으로 집계합니다.",
+	@Operation(summary = "입실 세션 일일 리포트 조회", description = "세션 소유권을 확인한 뒤 해당 반려동물의 날짜별 카드형 리포트를 반환합니다.",
 			responses = {
 					@ApiResponse(responseCode = "200", description = "조회 성공",
 							content = @Content(schema = @Schema(implementation = DailyReportResponse.class))),

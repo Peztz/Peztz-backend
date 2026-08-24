@@ -1,0 +1,20 @@
+# Isolated feature-branch preview against the team PostgreSQL database.
+#
+# Always use this with infra/docker-compose.yml and the REPORT_TEST_* shell
+# overrides documented in TEAM_POSTGRES_E2E.md. It does not replace or restart
+# the production containers.
+services:
+  spring:
+    container_name: peztz-report-test-spring
+    restart: "no"
+    environment:
+      DAILY_REPORT_SCHEDULING_ENABLED: "false"
+      SMARTTHINGS_POLLING_ENABLED: "false"
+
+  fastapi:
+    container_name: peztz-report-test-fastapi
+    restart: "no"
+
+networks:
+  peztz-internal:
+    name: peztz-report-test-internal

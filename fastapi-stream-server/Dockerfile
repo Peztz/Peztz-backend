@@ -13,7 +13,7 @@ COPY requirements.txt .
 RUN pip install --upgrade pip \
     && pip install -r requirements.txt
 
-COPY main.py .
+COPY main.py report_prompt.py ./
 
 USER peztz
 
